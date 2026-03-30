@@ -17,10 +17,19 @@ class FilterGroup:
 
 
 @dataclass
+class SummarizationConfig:
+    model: str = "claude-sonnet-4-20250514"
+    max_tokens: int = 8192
+    output_dir: Path = field(default_factory=lambda: Path("output/daily"))
+    sectors: list[str] = field(default_factory=list)
+
+
+@dataclass
 class AppConfig:
     hours_back: int
     filters: list[FilterGroup]
     data_dir: Path = field(default_factory=lambda: Path("data/mail"))
+    summarization: SummarizationConfig = field(default_factory=SummarizationConfig)
 
     @property
     def all_senders(self) -> list[str]:
@@ -67,9 +76,19 @@ def load_config(path: Path | None = None) -> AppConfig:
     if not filters:
         raise ValueError("No filters defined in config file.")
 
+    # Parse summarization config
+    sum_raw = raw.get("summarization", {})
+    sum_config = SummarizationConfig(
+        model=sum_raw.get("model", "claude-sonnet-4-20250514"),
+        max_tokens=sum_raw.get("max_tokens", 8192),
+        output_dir=Path(sum_raw.get("output_dir", "output/daily")),
+        sectors=sum_raw.get("sectors", []),
+    )
+
     config = AppConfig(
         hours_back=raw.get("hours_back", 24),
         filters=filters,
+        summarization=sum_config,
     )
     logger.info(f"Loaded {len(filters)} filter groups, {len(config.all_senders)} unique senders.")
     return config

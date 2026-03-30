@@ -28,8 +28,14 @@
    - 输出到 `output/daily/2026-03-30_daily_digest.md`
    - 按板块/Ticker 排序，中文，标注信息来源
 
+6. **Claude API 脚本化总结**
+   - 实现基于 Claude API 的每日邮件摘要生成
+   - 支持 multimodal 图片分析（>30KB PNG 图表）
+   - 使用第三方 Anthropic API 中转站，需在 `.env` 配置：
+     - `ANTHROPIC_API_KEY`: API 密钥
+     - `ANTHROPIC_BASE_URL`: 中转站 URL（可选，不设置则使用官方 API）
+
 ### 待做
-- [ ] **Claude API 脚本化总结** — 用 anthropic SDK 替代手动总结
 - [ ] **定时任务** — cron/launchd 自动化每日运行
 - [ ] **IM 推送** — 总结结果推送到微信/飞书
 

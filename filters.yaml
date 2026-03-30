@@ -34,3 +34,17 @@ filters:
       - "skhajuria@wolferesearch.com"
     keywords:
       - "Internet"
+
+# 总结配置
+summarization:
+  model: "claude-sonnet-4-6"
+  max_tokens: 8192
+  output_dir: "./output/daily"
+  sectors:
+    - "宏观与市场"
+    - "AI 模型与平台"
+    - "半导体与硬件"
+    - "互联网与数字广告"
+    - "软件与SaaS"
+    - "网络安全"
+    - "其他"
