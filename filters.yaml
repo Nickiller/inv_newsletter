@@ -1,0 +1,36 @@
+# Daily 必读邮件筛选配置
+# 每个 filter group: 发件人 + 主题关键词组合
+
+hours_back: 72
+
+filters:
+  - name: "JPM Tech Sketch"
+    senders:
+      - "mark.schilsky@jpmorgan.com"
+    keywords:
+      - "JPM TECH SKETCH"
+
+  - name: "Jefferies Tech"
+    senders:
+      - "jfavuzza@jefferies.com"
+    keywords:
+      - "Jefferies Tech"
+
+  - name: "Bernstein TMT"
+    senders:
+      - "tyler.seidman@bernsteinsg.com"
+    keywords:
+      - "Bernstein TMT"
+
+  - name: "FOMO Therapy"
+    senders:
+      - "no-reply@notifications.alphaholic.app"
+      - "zezhou@notifications.alphaholic.app"
+    keywords:
+      - "FOMO Therapy"
+
+  - name: "Wolfe Internet"
+    senders:
+      - "skhajuria@wolferesearch.com"
+    keywords:
+      - "Internet"

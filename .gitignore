@@ -1,0 +1,26 @@
+# Secrets & auth
+.env
+.token_cache/
+.browser_state/
+
+# Data (large, sensitive, regeneratable)
+data/
+output/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Sample data
+Examples/
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
