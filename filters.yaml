@@ -35,6 +35,12 @@ filters:
     keywords:
       - "Internet"
 
+  - name: "JPM Semis"
+    senders:
+      - "joshua.meyers@jpmorgan.com"
+    keywords:
+      - "Chips for Breakfast"
+
 # 总结配置
 summarization:
   model: "claude-sonnet-4-6"
@@ -48,3 +54,12 @@ summarization:
     - "软件与SaaS"
     - "网络安全"
     - "其他"
+
+# 自动监控配置
+monitor:
+  start_hour: 20          # CST 晚8点开始扫描
+  deadline_hour: 23       # CST 晚11点截止，强制总结
+  weekday_min_sources: 2  # 工作日最少来源数
+  weekend_min_sources: 1  # 周末最少来源数
+  grace_minutes: 45       # 达到阈值后等待时间（分钟）
+  timezone: "Asia/Shanghai"

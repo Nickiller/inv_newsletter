@@ -18,6 +18,9 @@ build/
 # Sample data
 Examples/
 
+# Logs
+logs/
+
 # OS
 .DS_Store
 

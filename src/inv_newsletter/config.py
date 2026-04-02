@@ -25,11 +25,22 @@ class SummarizationConfig:
 
 
 @dataclass
+class MonitorConfig:
+    start_hour: int = 20
+    deadline_hour: int = 23
+    weekday_min_sources: int = 2
+    weekend_min_sources: int = 1
+    grace_minutes: int = 45
+    timezone: str = "Asia/Shanghai"
+
+
+@dataclass
 class AppConfig:
     hours_back: int
     filters: list[FilterGroup]
     data_dir: Path = field(default_factory=lambda: Path("data/mail"))
     summarization: SummarizationConfig = field(default_factory=SummarizationConfig)
+    monitor: MonitorConfig = field(default_factory=MonitorConfig)
 
     @property
     def all_senders(self) -> list[str]:
@@ -85,10 +96,22 @@ def load_config(path: Path | None = None) -> AppConfig:
         sectors=sum_raw.get("sectors", []),
     )
 
+    # Parse monitor config
+    mon_raw = raw.get("monitor", {})
+    monitor_config = MonitorConfig(
+        start_hour=mon_raw.get("start_hour", 20),
+        deadline_hour=mon_raw.get("deadline_hour", 23),
+        weekday_min_sources=mon_raw.get("weekday_min_sources", 2),
+        weekend_min_sources=mon_raw.get("weekend_min_sources", 1),
+        grace_minutes=mon_raw.get("grace_minutes", 45),
+        timezone=mon_raw.get("timezone", "Asia/Shanghai"),
+    )
+
     config = AppConfig(
         hours_back=raw.get("hours_back", 24),
         filters=filters,
         summarization=sum_config,
+        monitor=monitor_config,
     )
     logger.info(f"Loaded {len(filters)} filter groups, {len(config.all_senders)} unique senders.")
     return config

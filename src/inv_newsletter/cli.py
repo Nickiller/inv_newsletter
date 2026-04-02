@@ -22,6 +22,8 @@ def main():
     parser.add_argument("--summarize", "-s", action="store_true", help="Fetch emails then summarize")
     parser.add_argument("--summarize-only", "-S", action="store_true", help="Summarize existing emails (no fetch)")
     parser.add_argument("--date", default=None, help="Target date for summary (YYYY-MM-DD)")
+    parser.add_argument("--monitor", "-m", action="store_true",
+                        help="Auto-monitor: fetch, check sources, summarize when ready")
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
 
@@ -34,6 +36,12 @@ def main():
     if args.hours:
         config.hours_back = args.hours
     base_dir = Path(args.data_dir) if args.data_dir else config.data_dir
+
+    # Monitor mode
+    if args.monitor:
+        from inv_newsletter.monitor import run_monitor
+        run_monitor(config, base_dir)
+        return
 
     # Fetch emails (unless --summarize-only)
     if not args.summarize_only:
