@@ -16,7 +16,9 @@ src/inv_newsletter/
   outlook.py    — OutlookClient: fetch_emails + fetch_attachments
   converter.py  — HTML→Markdown 转换 + cid/base64 图片提取
   storage.py    — 文件保存、YAML frontmatter、去重
-  config.py     — 加载 filters.yaml
+  config.py     — 加载 filters.yaml（含 MonitorConfig）
+  monitor.py    — 自动监控：轮询邮件 + 条件触发总结
+  summarizer.py — Claude API 总结（支持邮件 + PDF）
   cli.py        — CLI 入口 (inv-newsletter)
 ```
 
@@ -30,7 +32,25 @@ source .venv/bin/activate
 inv-newsletter                  # 抓取并保存
 inv-newsletter --dry-run        # 预览匹配邮件
 inv-newsletter --hours 72       # 自定义时间范围
+inv-newsletter --summarize      # 抓取 + API 总结
+inv-newsletter --monitor -v     # 自动监控模式（launchd 调用）
 ```
+
+## 自动监控
+- launchd 每 30 分钟调用 `--monitor`，20:00-23:00 CST 窗口
+- 检测 6 个邮件源到达情况，≥2 源 + 45 分钟无新邮件 → 自动总结
+- 23:00 截止强制总结已收邮件
+- 配置：`filters.yaml` 的 `monitor:` 段
+- 日志：`logs/monitor.log`
+- 状态：`data/mail/.monitor_state.json`
+
+## TMTB PDF 工作流
+TMTB daily 是 Safari 截图型 PDF（有复制保护，pdftotext 无法提取文字）：
+1. 用户手动将 PDF 放到 `data/` 目录
+2. 用 `pdftoppm -png -r 150` 转为图片
+3. Claude Code 用 Read 工具逐页读取图片提取文字
+4. 保存为 `data/mail/YYYY-MM-DD/0600-tmtb-morning-wrap-tmt-breakout/email.md`
+5. Claude Code 直接生成每日摘要（不走 API proxy，因 proxy 有请求体大小限制）
 
 ## Token 生命周期
 1. Token 缓存（~26h 有效）→ 直接使用
@@ -44,6 +64,7 @@ inv-newsletter --hours 72       # 自定义时间范围
 - 用户回复语言为中文时用中文回复
 
 ## 下一步 (TODO)
-- [ ] 用 Claude API 脚本化每日总结（替代手动在 Claude Code 中总结）
-- [ ] 定时任务自动化（cron / launchd）
+- [x] 用 Claude API 脚本化每日总结（summarizer.py 已实现）
+- [x] 定时任务自动化（launchd + monitor.py 已实现）
 - [ ] 总结结果推送到 IM 工具
+- [ ] TMTB PDF 自动化（目前手动提取，可考虑 Tesseract OCR 或定时 Claude Code 任务）
