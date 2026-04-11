@@ -24,6 +24,10 @@ def main():
     parser.add_argument("--date", default=None, help="Target date for summary (YYYY-MM-DD)")
     parser.add_argument("--monitor", "-m", action="store_true",
                         help="Auto-monitor: fetch, check sources, summarize when ready")
+    parser.add_argument("--publish", "-p", action="store_true",
+                        help="Publish digest to Lark/Feishu after summarizing (or for existing .md)")
+    parser.add_argument("--publish-file", default=None,
+                        help="Publish a specific markdown file to Lark (skips fetch & summarize)")
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
 
@@ -43,13 +47,35 @@ def main():
         run_monitor(config, base_dir)
         return
 
+    # Publish-file shortcut: just publish an existing .md, skip everything else
+    if args.publish_file:
+        _do_publish(Path(args.publish_file), config.summarization.lark_folder_token)
+        return
+
     # Fetch emails (unless --summarize-only)
     if not args.summarize_only:
         _do_fetch(config, base_dir, args.dry_run)
 
     # Summarize (if --summarize or --summarize-only)
+    summary_path = None
     if (args.summarize or args.summarize_only) and not args.dry_run:
-        _do_summarize(config, base_dir, args.date)
+        summary_path = _do_summarize(config, base_dir, args.date)
+
+    # Publish to Lark
+    if args.publish and not args.dry_run:
+        if summary_path is None:
+            # Find the latest digest matching --date or most recent
+            sum_cfg = config.summarization
+            out_dir = Path(sum_cfg.output_dir)
+            if args.date:
+                summary_path = out_dir / f"{args.date}_daily_digest.md"
+            else:
+                candidates = sorted(out_dir.glob("*_daily_digest.md"), reverse=True)
+                summary_path = candidates[0] if candidates else None
+        if summary_path and summary_path.exists():
+            _do_publish(summary_path, config.summarization.lark_folder_token)
+        else:
+            logger.error(f"No digest file found to publish: {summary_path}")
 
 
 def _do_fetch(config, base_dir: Path, dry_run: bool):
@@ -117,12 +143,16 @@ def _do_summarize(config, base_dir: Path, target_date: str | None):
         max_tokens=sum_cfg.max_tokens,
     )
 
-    # Print digest to terminal
-    digest = output_path.read_text(encoding="utf-8")
-    print(f"\n{'='*60}")
-    print(digest)
-    print(f"{'='*60}")
     print(f"\nSaved to: {output_path}")
+    return output_path
+
+
+def _do_publish(md_path: Path, folder_token: str | None = None):
+    from inv_newsletter.lark_publisher import publish_digest
+
+    logger.info(f"Publishing to Lark: {md_path}")
+    result = publish_digest(md_path, folder_token=folder_token)
+    print(f"\n📄 Lark doc created: {result['doc_url']}")
 
 
 if __name__ == "__main__":

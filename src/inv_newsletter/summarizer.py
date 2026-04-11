@@ -4,6 +4,7 @@ import base64
 import logging
 import os
 import re
+import shutil
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -22,8 +23,8 @@ SYSTEM_PROMPT = """\
 ## 输出要求
 
 1. **板块排序**：按以下顺序组织内容：
-   - 宏观与市场
    - AI 模型与平台
+   - 宏观与市场
    - 半导体与硬件
    - 互联网与数字广告
    - 软件与SaaS
@@ -45,9 +46,18 @@ SYSTEM_PROMPT = """\
    - 示例（有链接）：`OpenAI 完成融资 [Tae Kim](https://x.com/...) [The Information](https://theinformation.com/...)`
    - 示例（无链接）：`分析师认为软件名义将滞后 *来源：Jefferies (04/01)*`
 
-5. **图表分析**：如果邮件附带了图表图片，请描述图表中的关键数据点（具体数字、百分比）和趋势（上升/下降/对比），并标注 `📊 [图表]`。
+5. **图表引用与分析**：
+   - 每张图片都有一个唯一 ID（如 `IMG_01`），在发送时已标注
+   - 当你认为某张图表对分析有价值时，**必须**用 markdown 图片语法嵌入：`![简短描述](IMG_01)`
+   - 在图片嵌入之后，紧跟一段文字描述图表中的关键数据点（具体数字、百分比）和趋势
+   - 不要嵌入 logo、签名、广告等无信息量的图片，只嵌入图表、数据表格、定价截图等有分析价值的图片
+   - 示例：
+     ```
+     ![Mag7 仓位历史分位](IMG_02)
+     📊 Mag7 composite sentiment 当前约 -0.7，接近 max bearish（-1），为 2023 年以来最低。
+     ```
 
-6. **催化剂日历**：在文末汇总"本周关注"事件（如有）。
+6. **催化剂日历**：在文末汇总"本周关注"事件（财报、会议、数据发布等，如有）。
 
 ## 输出格式
 
@@ -74,7 +84,7 @@ def summarize_daily(
     output_dir: Path,
     target_date: str | None = None,
     model: str = "claude-sonnet-4-20250514",
-    max_tokens: int = 8192,
+    max_tokens: int = 16000,
 ) -> Path:
     """Load emails for a date, call Claude API, write digest. Returns output path."""
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -101,32 +111,58 @@ def summarize_daily(
 
     logger.info(f"Summarizing {len(emails)} emails for {target_date}")
 
-    # Build API request
-    content_blocks = _build_content_blocks(emails)
+    # Build API request — also collect img_id → path mapping
+    content_blocks, img_map = _build_content_blocks(emails)
     client = anthropic.Anthropic(api_key=api_key, base_url=base_url)
 
-    logger.info(f"Calling Claude API ({model})...")
-    response = client.messages.create(
+    logger.info(f"Calling Claude API ({model}) [streaming]...")
+    chunks = []
+    with client.messages.stream(
         model=model,
         max_tokens=max_tokens,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": content_blocks}],
-    )
+    ) as stream:
+        for text in stream.text_stream:
+            print(text, end="", flush=True)
+            chunks.append(text)
+        print()  # newline after streaming
+        final = stream.get_final_message()
 
-    digest = response.content[0].text
-    tokens_in = response.usage.input_tokens
-    tokens_out = response.usage.output_tokens
-    stop_reason = response.stop_reason
+    digest = "".join(chunks)
+    tokens_in = final.usage.input_tokens
+    tokens_out = final.usage.output_tokens
+    stop_reason = final.stop_reason
     logger.info(f"API response: {tokens_in} input tokens, {tokens_out} output tokens, stop_reason: {stop_reason}")
 
-    # Write output
+    # Write output — markdown in output_dir, images in output_dir/{date}/
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    img_dir = output_dir / target_date
     output_path = output_dir / f"{target_date}_daily_digest.md"
-    output_path.write_text(digest, encoding="utf-8")
 
+    # Copy referenced images to date subdir and replace IMG_XX with relative paths
+    digest = _embed_images(digest, img_map, img_dir, target_date)
+
+    output_path.write_text(digest, encoding="utf-8")
     logger.info(f"Digest written to {output_path}")
     return output_path
+
+
+def _embed_images(digest: str, img_map: dict[str, Path], img_dir: Path, date_str: str) -> str:
+    """Copy images referenced as IMG_XX into img_dir and rewrite markdown paths."""
+    for img_id, src_path in img_map.items():
+        if img_id not in digest:
+            continue
+        img_dir.mkdir(parents=True, exist_ok=True)
+        ext = src_path.suffix.lower()
+        dest_name = f"{img_id}{ext}"
+        dest_path = img_dir / dest_name
+        shutil.copy2(src_path, dest_path)
+        # Use relative path from the .md file: {date}/IMG_XX.ext
+        digest = digest.replace(img_id, f"{date_str}/{dest_name}")
+        logger.debug(f"Copied image {img_id} → {date_str}/{dest_name}")
+    return digest
 
 
 def _load_emails(date_dir: Path) -> list[dict]:
@@ -185,9 +221,14 @@ def _select_key_images(email_dir: Path, image_names: list[str]) -> list[dict]:
     return selected
 
 
-def _build_content_blocks(emails: list[dict]) -> list[dict]:
-    """Build multimodal content blocks for Claude API."""
+def _build_content_blocks(emails: list[dict]) -> tuple[list[dict], dict[str, Path]]:
+    """Build multimodal content blocks for Claude API.
+
+    Returns (blocks, img_map) where img_map is {IMG_XX: original_path}.
+    """
     blocks: list[dict] = []
+    img_map: dict[str, Path] = {}
+    img_counter = 0
 
     blocks.append({
         "type": "text",
@@ -215,13 +256,15 @@ def _build_content_blocks(emails: list[dict]) -> list[dict]:
             ),
         })
 
-        # Attach key images
+        # Attach key images with sequential IMG_XX IDs
         for img in email["images"]:
+            img_counter += 1
+            img_id = f"IMG_{img_counter:02d}"
             try:
                 img_data = base64.standard_b64encode(img["path"].read_bytes()).decode()
                 blocks.append({
                     "type": "text",
-                    "text": f"\n[附图: {img['name']} — 来自 {subject}]\n",
+                    "text": f"\n[{img_id} — 来自 {subject}]\n",
                 })
                 blocks.append({
                     "type": "image",
@@ -231,10 +274,11 @@ def _build_content_blocks(emails: list[dict]) -> list[dict]:
                         "data": img_data,
                     },
                 })
+                img_map[img_id] = img["path"]
             except Exception as e:
                 logger.warning(f"Failed to encode image {img['name']}: {e}")
 
-    return blocks
+    return blocks, img_map
 
 
 def _media_type(ext: str) -> str:

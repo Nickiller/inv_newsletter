@@ -43,12 +43,13 @@ filters:
 
 # 总结配置
 summarization:
-  model: "claude-sonnet-4-6"
-  max_tokens: 8192
+  model: "anthropic/claude-opus-4.6"
+  max_tokens: 16000
   output_dir: "./output/daily"
+  lark_folder_token: "VnpGfdTuylfRcJdFmGkct1Q1nqg"  # 飞书目标文件夹
   sectors:
-    - "宏观与市场"
     - "AI 模型与平台"
+    - "宏观与市场"
     - "半导体与硬件"
     - "互联网与数字广告"
     - "软件与SaaS"

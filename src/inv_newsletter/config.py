@@ -22,6 +22,7 @@ class SummarizationConfig:
     max_tokens: int = 8192
     output_dir: Path = field(default_factory=lambda: Path("output/daily"))
     sectors: list[str] = field(default_factory=list)
+    lark_folder_token: str | None = None
 
 
 @dataclass
@@ -94,6 +95,7 @@ def load_config(path: Path | None = None) -> AppConfig:
         max_tokens=sum_raw.get("max_tokens", 8192),
         output_dir=Path(sum_raw.get("output_dir", "output/daily")),
         sectors=sum_raw.get("sectors", []),
+        lark_folder_token=sum_raw.get("lark_folder_token"),
     )
 
     # Parse monitor config

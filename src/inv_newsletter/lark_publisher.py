@@ -1,0 +1,144 @@
+"""Publish a daily digest markdown to Feishu/Lark using lark-cli.
+
+Workflow:
+1. Parse markdown into text/image segments
+2. Create Lark doc with title (and first text segment)
+3. For each subsequent segment: append text via `docs +update`, or insert image via `docs +media-insert`
+4. Image paths in markdown are resolved relative to the .md file, then re-mapped to cwd-relative paths
+
+Note: lark-cli requires the file path to be relative to the current working directory.
+"""
+
+import json
+import logging
+import re
+import subprocess
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+IMG_PATTERN = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
+
+
+def publish_digest(md_path: Path, title: str | None = None, folder_token: str | None = None) -> dict:
+    """Publish markdown file to Lark. Returns {doc_id, doc_url}."""
+    md_path = Path(md_path).resolve()
+    if not md_path.exists():
+        raise FileNotFoundError(md_path)
+
+    md_text = md_path.read_text(encoding="utf-8")
+    if title is None:
+        title = md_path.stem  # e.g. 2026-04-10_daily_digest
+
+    segments = _split_segments(md_text, md_path.parent)
+    if not segments:
+        raise RuntimeError("No content found in markdown")
+
+    # Create doc with first text segment (or empty if first is image)
+    first_text = ""
+    start_idx = 0
+    if segments[0][0] == "text":
+        first_text = segments[0][1]
+        start_idx = 1
+
+    logger.info(f"Creating Lark doc: {title}")
+    create_result = _lark_create(title, first_text, folder_token)
+    doc_id = create_result["doc_id"]
+    doc_url = create_result["doc_url"]
+    logger.info(f"Created: {doc_url}")
+
+    # Process remaining segments
+    for kind, payload in segments[start_idx:]:
+        if kind == "text":
+            if payload.strip():
+                logger.debug(f"Appending text ({len(payload)} chars)")
+                _lark_append(doc_id, payload)
+        elif kind == "image":
+            img_path: Path = payload
+            if not img_path.exists():
+                logger.warning(f"Image not found, skipping: {img_path}")
+                continue
+            try:
+                rel_path = img_path.relative_to(Path.cwd())
+            except ValueError:
+                logger.warning(f"Image not under cwd, skipping: {img_path}")
+                continue
+            logger.info(f"Inserting image: {rel_path}")
+            _lark_media_insert(doc_id, rel_path)
+
+    return {"doc_id": doc_id, "doc_url": doc_url}
+
+
+def _extract_title(md_text: str) -> str | None:
+    for line in md_text.splitlines():
+        line = line.strip()
+        if line.startswith("# "):
+            return line[2:].strip()
+    return None
+
+
+def _split_segments(md_text: str, base_dir: Path) -> list[tuple[str, object]]:
+    """Split markdown into [(kind, payload), ...] segments.
+
+    kind="text" → payload is the markdown text chunk
+    kind="image" → payload is the resolved absolute Path to the image
+    Only local image references are extracted as image segments; remote URLs stay inline as text.
+    """
+    segments: list[tuple[str, object]] = []
+    last = 0
+    for m in IMG_PATTERN.finditer(md_text):
+        ref = m.group(2).strip()
+        # Skip remote images — keep them inline as part of text
+        if ref.startswith(("http://", "https://", "data:")):
+            continue
+
+        text_before = md_text[last:m.start()]
+        if text_before:
+            segments.append(("text", text_before))
+
+        img_abs = (base_dir / ref).resolve()
+        segments.append(("image", img_abs))
+        last = m.end()
+
+    if last < len(md_text):
+        tail = md_text[last:]
+        if tail:
+            segments.append(("text", tail))
+
+    return segments
+
+
+def _run_lark(args: list[str]) -> dict:
+    """Run lark-cli command and parse JSON response."""
+    cmd = ["lark-cli", *args, "--as", "user"]
+    logger.debug(f"$ {' '.join(str(a) for a in cmd)}")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"lark-cli failed: {result.stderr or result.stdout}")
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"lark-cli returned non-JSON output: {result.stdout}") from e
+    if not data.get("ok"):
+        raise RuntimeError(f"lark-cli error: {data.get('error') or data}")
+    return data["data"]
+
+
+def _lark_create(title: str, markdown: str, folder_token: str | None) -> dict:
+    args = ["docs", "+create", "--title", title, "--markdown", markdown]
+    if folder_token:
+        args.extend(["--folder-token", folder_token])
+    return _run_lark(args)
+
+
+def _lark_append(doc_id: str, markdown: str) -> dict:
+    return _run_lark(["docs", "+update", "--doc", doc_id, "--mode", "append", "--markdown", markdown])
+
+
+def _lark_media_insert(doc_id: str, file_path: Path) -> dict:
+    return _run_lark([
+        "docs", "+media-insert",
+        "--doc", doc_id,
+        "--file", str(file_path),
+        "--align", "center",
+    ])
