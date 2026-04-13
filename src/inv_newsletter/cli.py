@@ -148,11 +148,19 @@ def _do_summarize(config, base_dir: Path, target_date: str | None):
 
 
 def _do_publish(md_path: Path, folder_token: str | None = None):
+    import re as _re
     from inv_newsletter.lark_publisher import publish_digest
 
     logger.info(f"Publishing to Lark: {md_path}")
     result = publish_digest(md_path, folder_token=folder_token)
-    print(f"\n📄 Lark doc created: {result['doc_url']}")
+    doc_url = result["doc_url"]
+    print(f"\n📄 Lark doc created: {doc_url}")
+
+    # WeChat-shareable message: extract YY-MM-DD from filename like 2026-04-10_daily_digest.md
+    m = _re.search(r"(\d{2})(\d{2}-\d{2}-\d{2})", md_path.stem)
+    date_str = m.group(2) if m else md_path.stem
+    print("\n💬 微信分享文案：")
+    print(f"今日[{date_str}] Daily Digest已经生成，点击如下链接查看：{doc_url}")
 
 
 if __name__ == "__main__":

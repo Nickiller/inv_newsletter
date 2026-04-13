@@ -22,7 +22,7 @@ SYSTEM_PROMPT = """\
 
 ## 输出要求
 
-1. **板块排序**：按以下顺序组织内容：
+1. **板块排序**：严格按以下固定顺序组织内容（AI 模型与平台始终排第一）：
    - AI 模型与平台
    - 宏观与市场
    - 半导体与硬件
@@ -38,6 +38,7 @@ SYSTEM_PROMPT = """\
    - 保留分析师观点、投资逻辑和业务细节
    - 每个要点用 bullet point
    - 不要过度压缩信息，保持原文的信息密度
+   - 金融行业术语保留英文原文，不要翻译（如 Street / Wall Street、buy-side、sell-side、consensus、guidance、beat/miss 等）
 
 4. **来源标注与链接**：
    - **原文中出现的所有链接都必须保留**，无论是主流媒体（WSJ、Bloomberg、CNBC、Reuters 等）还是社区来源（TMTB Chat、Tae Kim、Semianalysis、FundaAI、Substack 等），格式：`[来源名](完整URL)` 紧跟在相关内容后

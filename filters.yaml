@@ -56,6 +56,23 @@ summarization:
     - "网络安全"
     - "其他"
 
+# 社交媒体追踪配置
+social:
+  twitter:
+    enabled: true
+    accounts:
+      - handle: "karpathy"
+        name: "Andrej Karpathy"
+    hours_back: 24
+    include_replies: false
+    include_retweets: false
+  truth_social:
+    enabled: true
+    accounts:
+      - handle: "realDonaldTrump"
+        name: "Donald Trump"
+    hours_back: 24
+
 # 自动监控配置
 monitor:
   start_hour: 20          # CST 晚8点开始扫描

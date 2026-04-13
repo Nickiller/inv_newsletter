@@ -36,12 +36,41 @@ class MonitorConfig:
 
 
 @dataclass
+class SocialAccountConfig:
+    handle: str
+    name: str
+
+
+@dataclass
+class TwitterConfig:
+    enabled: bool = False
+    accounts: list[SocialAccountConfig] = field(default_factory=list)
+    hours_back: int | None = None
+    include_replies: bool = False
+    include_retweets: bool = False
+
+
+@dataclass
+class TruthSocialConfig:
+    enabled: bool = False
+    accounts: list[SocialAccountConfig] = field(default_factory=list)
+    hours_back: int | None = None
+
+
+@dataclass
+class SocialConfig:
+    twitter: TwitterConfig = field(default_factory=TwitterConfig)
+    truth_social: TruthSocialConfig = field(default_factory=TruthSocialConfig)
+
+
+@dataclass
 class AppConfig:
     hours_back: int
     filters: list[FilterGroup]
     data_dir: Path = field(default_factory=lambda: Path("data/mail"))
     summarization: SummarizationConfig = field(default_factory=SummarizationConfig)
     monitor: MonitorConfig = field(default_factory=MonitorConfig)
+    social: SocialConfig = field(default_factory=SocialConfig)
 
     @property
     def all_senders(self) -> list[str]:
@@ -64,6 +93,22 @@ class AppConfig:
                     seen.add(k)
                     result.append(k)
         return result
+
+    @property
+    def all_source_groups(self) -> list[FilterGroup]:
+        """All filter groups including virtual ones for social accounts."""
+        groups = list(self.filters)
+        for acct in self.social.twitter.accounts:
+            groups.append(FilterGroup(
+                name=f"Twitter: {acct.name}",
+                senders=[f"twitter:{acct.handle}"],
+            ))
+        for acct in self.social.truth_social.accounts:
+            groups.append(FilterGroup(
+                name=f"Truth Social: {acct.name}",
+                senders=[f"truthsocial:{acct.handle}"],
+            ))
+        return groups
 
 
 def load_config(path: Path | None = None) -> AppConfig:
@@ -109,11 +154,30 @@ def load_config(path: Path | None = None) -> AppConfig:
         timezone=mon_raw.get("timezone", "Asia/Shanghai"),
     )
 
+    # Parse social config
+    social_raw = raw.get("social", {})
+    tw_raw = social_raw.get("twitter", {})
+    ts_raw = social_raw.get("truth_social", {})
+    twitter_config = TwitterConfig(
+        enabled=tw_raw.get("enabled", False),
+        accounts=[SocialAccountConfig(**a) for a in tw_raw.get("accounts", [])],
+        hours_back=tw_raw.get("hours_back"),
+        include_replies=tw_raw.get("include_replies", False),
+        include_retweets=tw_raw.get("include_retweets", False),
+    )
+    truth_social_config = TruthSocialConfig(
+        enabled=ts_raw.get("enabled", False),
+        accounts=[SocialAccountConfig(**a) for a in ts_raw.get("accounts", [])],
+        hours_back=ts_raw.get("hours_back"),
+    )
+    social_config = SocialConfig(twitter=twitter_config, truth_social=truth_social_config)
+
     config = AppConfig(
         hours_back=raw.get("hours_back", 24),
         filters=filters,
         summarization=sum_config,
         monitor=monitor_config,
+        social=social_config,
     )
     logger.info(f"Loaded {len(filters)} filter groups, {len(config.all_senders)} unique senders.")
     return config

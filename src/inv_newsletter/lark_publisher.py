@@ -66,6 +66,12 @@ def publish_digest(md_path: Path, title: str | None = None, folder_token: str | 
             logger.info(f"Inserting image: {rel_path}")
             _lark_media_insert(doc_id, rel_path)
 
+    try:
+        _lark_set_public_link(doc_id)
+        logger.info("Set link permission: anyone_readable")
+    except Exception as e:
+        logger.warning(f"Failed to set public link permission: {e}")
+
     return {"doc_id": doc_id, "doc_url": doc_url}
 
 
@@ -133,6 +139,28 @@ def _lark_create(title: str, markdown: str, folder_token: str | None) -> dict:
 
 def _lark_append(doc_id: str, markdown: str) -> dict:
     return _run_lark(["docs", "+update", "--doc", doc_id, "--mode", "append", "--markdown", markdown])
+
+
+def _lark_set_public_link(doc_id: str) -> dict:
+    """Set doc link permission to 'anyone with the link can read'.
+
+    Uses the raw api command, which returns native Lark `{code, data, msg}` format
+    rather than the wrapper's `{ok, data}` format, so we bypass _run_lark.
+    """
+    cmd = [
+        "lark-cli", "api", "PATCH",
+        f"/open-apis/drive/v2/permissions/{doc_id}/public",
+        "--params", '{"type":"docx"}',
+        "--data", '{"link_share_entity":"anyone_readable"}',
+        "--as", "user",
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"lark-cli failed: {result.stderr or result.stdout}")
+    data = json.loads(result.stdout)
+    if data.get("code") != 0:
+        raise RuntimeError(f"lark api error: {data.get('msg') or data}")
+    return data.get("data", {})
 
 
 def _lark_media_insert(doc_id: str, file_path: Path) -> dict:
