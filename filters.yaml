@@ -44,7 +44,7 @@ filters:
 # 总结配置
 summarization:
   model: "anthropic/claude-opus-4.6"
-  max_tokens: 16000
+  max_tokens: 32000
   output_dir: "./output/daily"
   lark_folder_token: "VnpGfdTuylfRcJdFmGkct1Q1nqg"  # 飞书目标文件夹
   sectors:
