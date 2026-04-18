@@ -34,7 +34,15 @@ inv-newsletter --dry-run        # 预览匹配邮件
 inv-newsletter --hours 72       # 自定义时间范围
 inv-newsletter --summarize      # 抓取 + API 总结
 inv-newsletter --monitor -v     # 自动监控模式（launchd 调用）
+
+# 发布到飞书（完整流水线：fetch → summarize → publish to Lark）
+inv-newsletter --summarize --publish                    # 抓取 + 总结 + 发布飞书
+inv-newsletter --summarize --publish --date 2026-04-17  # 指定日期
+inv-newsletter --publish-file output/daily/2026-04-17_daily_digest.md  # 单独发布已有文件
 ```
+
+### 发布流程说明
+`--publish` 会在总结完成后自动调用 `lark_publisher.py`，将 Markdown 转为飞书文档并生成公开分享链接（可直接转发微信）。`--publish-file` 用于单独发布已有的摘要文件，跳过抓取和总结步骤。
 
 ## 自动监控
 - launchd 每 30 分钟调用 `--monitor`，20:00-23:00 CST 窗口
@@ -66,5 +74,5 @@ TMTB daily 是 Safari 截图型 PDF（有复制保护，pdftotext 无法提取�
 ## 下一步 (TODO)
 - [x] 用 Claude API 脚本化每日总结（summarizer.py 已实现）
 - [x] 定时任务自动化（launchd + monitor.py 已实现）
-- [ ] 总结结果推送到 IM 工具
+- [x] 总结结果推送到 IM 工具（lark_publisher.py + --publish CLI 已实现）
 - [ ] TMTB PDF 自动化（目前手动提取，可考虑 Tesseract OCR 或定时 Claude Code 任务）

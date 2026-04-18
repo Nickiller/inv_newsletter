@@ -136,6 +136,18 @@ def summarize_daily(
     stop_reason = final.stop_reason
     logger.info(f"API response: {tokens_in} input tokens, {tokens_out} output tokens, stop_reason: {stop_reason}")
 
+    # Detect truncation
+    if stop_reason == "max_tokens":
+        logger.warning(
+            f"⚠️ Output truncated! stop_reason=max_tokens (limit={max_tokens}). "
+            f"Increase max_tokens in filters.yaml or pass a higher value."
+        )
+        digest += (
+            "\n\n---\n\n"
+            "> ⚠️ **注意：本摘要因 max_tokens 限制被截断，内容不完整。**\n"
+            f"> stop_reason: max_tokens, output_tokens: {tokens_out}, limit: {max_tokens}\n"
+        )
+
     # Write output — markdown in output_dir, images in output_dir/{date}/
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
