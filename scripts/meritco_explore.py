@@ -19,13 +19,14 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
-from playwright.sync_api import sync_playwright, Page, BrowserContext, Response
+from playwright.sync_api import sync_playwright, Page, Response
 
 BROWSER_STATE_DIR = Path(".browser_state_meritco")
 DATA_DIR = Path("data/meritco")
 SCREENSHOTS_DIR = DATA_DIR / "screenshots"
-FORUM_URL = "https://research.meritco-group.com/forum?forumType=3"
-LOGIN_URL = "https://research.meritco-group.com"
+BASE_URL = "https://research.meritco-group.com"
+FORUM_URL = f"{BASE_URL}/forum?forumType=3"
+MINUTES_URL = f"{BASE_URL}/forum?forumType=2"
 
 
 def setup_dirs():
@@ -35,24 +36,19 @@ def setup_dirs():
 
 def is_logged_in(page: Page) -> bool:
     """Check if we're logged in by looking for login/scan-code indicators."""
-    # Wait a bit for SPA to render
     page.wait_for_timeout(3000)
     url = page.url
-    # If redirected to login page, not logged in
     if "login" in url.lower() or "auth" in url.lower():
         return False
-    # Check for common login prompts (WeChat QR, etc.)
     content = page.content().lower()
     if "扫码" in content or "微信登录" in content or "scan" in content:
-        # Could be on the main page with a login modal
-        # Check if forum content is also present
         if "forum" not in url:
             return False
     return True
 
 
 def launch_browser(headless: bool) -> tuple:
-    """Launch persistent browser context. Returns (playwright, context, page)."""
+    """Launch persistent browser context."""
     p = sync_playwright().start()
     context = p.chromium.launch_persistent_context(
         user_data_dir=str(BROWSER_STATE_DIR),
@@ -70,7 +66,7 @@ def login(force_visible: bool = False) -> tuple:
         print("尝试 headless 模式（复用已有 session）...")
         p, context, page = launch_browser(headless=True)
         page.goto(FORUM_URL, wait_until="domcontentloaded")
-        page.wait_for_timeout(5000)  # Wait for SPA + redirects
+        page.wait_for_timeout(5000)
 
         if is_logged_in(page):
             print("✓ Headless 登录成功，session 有效")
@@ -89,167 +85,228 @@ def login(force_visible: bool = False) -> tuple:
     p, context, page = launch_browser(headless=False)
     page.goto(FORUM_URL, wait_until="domcontentloaded")
 
-    # Wait for user to login
     start = time.time()
     while (time.time() - start) < 120:
         page.wait_for_timeout(3000)
         if is_logged_in(page):
             print("✓ 登录成功！")
-            # Give SPA time to fully load
             page.wait_for_timeout(3000)
             return p, context, page
 
     raise RuntimeError("登录超时（120 秒），请重试。")
 
 
-def intercept_api(page: Page) -> list[dict]:
-    """Set up request/response interception to capture API patterns."""
-    api_log = []
+class APICapture:
+    """Intercept and capture API responses."""
 
-    def handle_response(response: Response):
+    def __init__(self, page: Page):
+        self.page = page
+        self.api_log: list[dict] = []
+        self._forum_list: list[dict] = []
+        self._detail_data: dict | None = None
+        page.on("response", self._handle_response)
+
+    def _handle_response(self, response: Response):
         url = response.url
         parsed = urlparse(url)
-        # Skip static assets
-        if any(ext in parsed.path for ext in [".js", ".css", ".png", ".jpg", ".svg", ".ico", ".woff"]):
-            return
-        # Capture API-like requests (XHR/Fetch with JSON responses)
         content_type = response.headers.get("content-type", "")
-        if "json" in content_type or "/api/" in url:
-            try:
-                body = response.json() if "json" in content_type else None
-            except Exception:
-                body = None
-            entry = {
-                "timestamp": datetime.now().isoformat(),
-                "method": response.request.method,
-                "url": url,
-                "status": response.status,
-                "content_type": content_type,
-                "response_preview": _truncate_response(body),
-            }
-            api_log.append(entry)
-            print(f"  API: {entry['method']} {parsed.path} → {response.status}")
 
-    page.on("response", handle_response)
-    return api_log
+        # Skip non-JSON
+        if "json" not in content_type:
+            return
+
+        try:
+            body = response.json()
+        except Exception:
+            return
+
+        path = parsed.path
+
+        # Capture forum list
+        if "forum/select/list" in path:
+            result = body.get("result", {})
+            self._forum_list = result.get("forumList", [])
+            total = result.get("total", 0)
+            print(f"  API 纪要列表: {len(self._forum_list)} 条 (总计 {total})")
+
+        # Capture detail content — full response, not truncated
+        if "forum/select/id" in path:
+            self._detail_data = body.get("result", body)
+            content = ""
+            if isinstance(self._detail_data, dict):
+                content = self._detail_data.get("content", "") or ""
+            print(f"  API 纪要详情: captured ({len(content)} 字 content)")
+
+        # Log all API calls
+        self.api_log.append({
+            "timestamp": datetime.now().isoformat(),
+            "method": response.request.method,
+            "path": path,
+            "status": response.status,
+        })
+        print(f"  API: {response.request.method} {path} → {response.status}")
+
+    @property
+    def forum_list(self) -> list[dict]:
+        return self._forum_list
+
+    @property
+    def detail_data(self) -> dict | None:
+        return self._detail_data
 
 
-def _truncate_response(body, max_items: int = 3, max_str_len: int = 200) -> any:
-    """Truncate response body for logging (keep structure, reduce size)."""
-    if body is None:
-        return None
-    if isinstance(body, list):
-        return body[:max_items]
-    if isinstance(body, dict):
-        return {k: _truncate_response(v, max_items, max_str_len) for k, v in list(body.items())[:10]}
-    if isinstance(body, str) and len(body) > max_str_len:
-        return body[:max_str_len] + "..."
-    return body
+def fetch_minutes_list(page: Page, capture: APICapture) -> list[dict]:
+    """Navigate to 纪要 page and capture the API response."""
+    print("\n--- 获取纪要列表 ---")
+    page.goto(MINUTES_URL, wait_until="domcontentloaded")
+    page.wait_for_timeout(5000)
 
-
-def explore_forum(page: Page) -> list[dict]:
-    """Extract post list from the forum page."""
-    print("\n--- 探索论坛页面 ---")
-
-    # Take screenshot of forum list
+    # Screenshot
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    page.screenshot(path=str(SCREENSHOTS_DIR / f"forum_list_{ts}.png"), full_page=False)
-    print(f"✓ 截图已保存: forum_list_{ts}.png")
+    page.screenshot(path=str(SCREENSHOTS_DIR / f"minutes_list_{ts}.png"), full_page=False)
+    print(f"✓ 截图: minutes_list_{ts}.png")
 
-    # Wait for content to load
-    page.wait_for_timeout(3000)
-
-    # Try to extract posts - multiple selector strategies for Vue SPA
-    posts = []
-    selectors = [
-        "div.post-item", "div.article-item", "div.forum-item",
-        "div.list-item", "a.post-link", "div.card",
-        "[class*='post']", "[class*='article']", "[class*='item']",
-    ]
-
-    for selector in selectors:
-        elements = page.query_selector_all(selector)
-        if elements:
-            print(f"✓ 找到 {len(elements)} 个元素 (selector: {selector})")
-            for i, el in enumerate(elements[:20]):  # Limit to first 20
-                text = el.inner_text().strip()
-                href = el.get_attribute("href") or ""
-                if text:
-                    posts.append({
-                        "index": i,
-                        "selector": selector,
-                        "text": text[:500],
-                        "href": href,
-                    })
-            break
-
-    if not posts:
-        # Fallback: dump all visible text blocks for analysis
-        print("未找到明确的帖子元素，抓取页面文本结构...")
-        body_text = page.inner_text("body")
-        lines = [l.strip() for l in body_text.split("\n") if l.strip()]
-        posts = [{"index": i, "text": line[:300], "selector": "body-text"} for i, line in enumerate(lines[:50])]
-        print(f"  提取了 {len(posts)} 行文本")
-
-    # Print preview
-    print(f"\n前 5 条内容预览：")
-    for post in posts[:5]:
-        preview = post["text"][:100].replace("\n", " ")
-        print(f"  [{post['index']}] {preview}")
+    posts = capture.forum_list
+    if posts:
+        print(f"\n前 5 条纪要：")
+        for i, post in enumerate(posts[:5]):
+            title = post.get("title", "")[:80]
+            date = post.get("meetingTime", "")[:10]
+            print(f"  [{i}] {date} | {title}")
+    else:
+        print("⚠ 未通过 API 捕获到纪要列表")
 
     return posts
 
 
-def explore_post_detail(page: Page, posts: list[dict]) -> dict | None:
-    """Try to navigate into a post detail page."""
-    print("\n--- 探索帖子详情 ---")
+def fetch_first_detail(page: Page, capture: APICapture, posts: list[dict]) -> dict | None:
+    """Navigate to the first post's detail page and capture content."""
+    print("\n--- 提取第一篇纪要详情 ---")
 
-    # Find a clickable post
-    clickable = None
-    for post in posts:
-        href = post.get("href", "")
-        if href and href != "#":
-            clickable = post
-            break
+    if not posts:
+        print("无纪要可提取")
+        return None
 
-    if not clickable:
-        # Try clicking the first post element directly
-        selectors_to_try = [
-            "[class*='post'] a", "[class*='article'] a", "[class*='item'] a",
-            "a[href*='detail']", "a[href*='article']", "a[href*='post']",
-        ]
-        for selector in selectors_to_try:
-            elements = page.query_selector_all(selector)
-            if elements:
-                print(f"尝试点击: {selector}")
-                elements[0].click()
-                page.wait_for_timeout(3000)
+    first = posts[0]
+    post_id = first.get("id")
+    title = first.get("title", "")[:80]
+    print(f"目标: [{post_id}] {title}")
+
+    # Try navigating to detail page — common Vue SPA patterns
+    detail_urls = [
+        f"{BASE_URL}/forum/detail/{post_id}?forumType=2",
+        f"{BASE_URL}/forum/{post_id}?forumType=2",
+        f"{BASE_URL}/forum/detail?id={post_id}&forumType=2",
+    ]
+
+    # Dump HTML structure of the first visible post for debugging
+    print("分析页面 DOM 结构...")
+    first_item_html = page.evaluate("""() => {
+        // Find elements that contain the post title text
+        const items = document.querySelectorAll('[class*="item"], [class*="card"], [class*="post"], [class*="article"]');
+        const results = [];
+        for (const item of items) {
+            const text = item.innerText || '';
+            if (text.length > 100 && text.length < 5000) {
+                results.push({
+                    tag: item.tagName,
+                    classes: item.className,
+                    outerHTMLpreview: item.outerHTML.substring(0, 500),
+                    links: Array.from(item.querySelectorAll('a[href]')).map(a => ({
+                        href: a.href,
+                        text: (a.innerText || '').substring(0, 50)
+                    }))
+                });
+            }
+            if (results.length >= 3) break;
+        }
+        return results;
+    }""")
+    print(f"  DOM 分析结果: {len(first_item_html)} 个候选元素")
+    for i, item in enumerate(first_item_html):
+        print(f"  [{i}] <{item['tag']}> class=\"{item['classes'][:80]}\"")
+        print(f"      HTML: {item['outerHTMLpreview'][:200]}")
+        for link in item.get("links", []):
+            print(f"      链接: {link['href'][:80]} | {link['text']}")
+
+    # Try clicking the first post title link
+    clicked = False
+    # Strategy 1: find <a> tags that link to post detail
+    links = page.evaluate("""() => {
+        const allLinks = document.querySelectorAll('a[href]');
+        return Array.from(allLinks)
+            .filter(a => a.href && a.innerText.length > 20)
+            .slice(0, 20)
+            .map(a => ({href: a.href, text: (a.innerText || '').substring(0, 80)}));
+    }""")
+    print(f"\n  页面上的链接 ({len(links)} 条):")
+    for link in links[:10]:
+        print(f"    {link['href'][:80]} | {link['text'][:50]}")
+
+    # Strategy 2: click on the title text directly
+    expert_info = first.get("expertInformation", "")
+    if expert_info:
+        print(f"\n尝试点击包含「{expert_info}」的元素...")
+        el = page.query_selector(f"text={expert_info}")
+        if el:
+            el.click()
+            page.wait_for_timeout(5000)
+            clicked = True
+            print(f"  点击成功，当前 URL: {page.url}")
+
+    if not clicked:
+        # Strategy 3: try URL patterns
+        for url in detail_urls:
+            print(f"尝试 URL: {url}")
+            page.goto(url, wait_until="domcontentloaded")
+            page.wait_for_timeout(5000)
+            if page.url != MINUTES_URL and "forum" in page.url:
                 break
-        else:
-            print("未找到可点击的帖子链接")
-            return None
-    else:
-        href = clickable["href"]
-        if not href.startswith("http"):
-            href = f"https://research.meritco-group.com{href}"
-        print(f"导航到: {href}")
-        page.goto(href, wait_until="domcontentloaded")
-        page.wait_for_timeout(3000)
 
-    # Screenshot detail page
+    # Screenshot
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    page.screenshot(path=str(SCREENSHOTS_DIR / f"post_detail_{ts}.png"), full_page=True)
-    print(f"✓ 详情页截图: post_detail_{ts}.png")
+    page.screenshot(path=str(SCREENSHOTS_DIR / f"detail_{ts}.png"), full_page=True)
+    print(f"✓ 详情页截图: detail_{ts}.png")
+    print(f"  当前 URL: {page.url}")
 
-    # Extract content
+    # Build detail from API capture
     detail = {
         "url": page.url,
-        "title": page.title(),
-        "content_preview": page.inner_text("body")[:2000],
+        "metadata": {
+            "id": first.get("id"),
+            "title": first.get("title"),
+            "summary": first.get("summary"),
+            "expert": first.get("expertInformation"),
+            "industry": first.get("industry"),
+            "meeting_time": first.get("meetingTime"),
+            "author": first.get("author"),
+            "related_targets": first.get("relatedTargets"),
+            "language": "中文" if first.get("language") == 1 else "英文",
+        },
+        "api_data": capture.detail_data,
     }
-    print(f"  标题: {detail['title']}")
-    print(f"  URL: {detail['url']}")
-    print(f"  内容前 200 字: {detail['content_preview'][:200]}")
+
+    # Extract content from API response
+    api_content = ""
+    if capture.detail_data and isinstance(capture.detail_data, dict):
+        api_content = capture.detail_data.get("content", "") or ""
+        # content is likely HTML — also grab contentTextShow if available
+        text_content = capture.detail_data.get("contentTextShow", "") or ""
+        detail["content_html"] = api_content
+        detail["content_text"] = text_content
+        print(f"✓ API content: {len(api_content)} 字 HTML, {len(text_content)} 字 text")
+    else:
+        print("⚠ 未通过 API 捕获到纪要内容")
+
+    # Print preview
+    preview = detail.get("content_text") or api_content
+    if preview:
+        # Strip HTML tags for preview
+        import re
+        clean = re.sub(r'<[^>]+>', '', preview)[:800]
+        print(f"\n  内容预览:\n{'─' * 40}")
+        print(clean)
+        print(f"{'─' * 40}")
 
     return detail
 
@@ -257,19 +314,19 @@ def explore_post_detail(page: Page, posts: list[dict]) -> dict | None:
 def save_results(api_log: list[dict], posts: list[dict], detail: dict | None):
     """Save all captured data to JSON files."""
     if api_log:
-        api_path = DATA_DIR / "api_log.json"
-        api_path.write_text(json.dumps(api_log, ensure_ascii=False, indent=2))
-        print(f"\n✓ API 日志已保存: {api_path} ({len(api_log)} 条)")
+        path = DATA_DIR / "api_log.json"
+        path.write_text(json.dumps(api_log, ensure_ascii=False, indent=2))
+        print(f"\n✓ API 日志: {path} ({len(api_log)} 条)")
 
     if posts:
-        posts_path = DATA_DIR / "posts.json"
-        posts_path.write_text(json.dumps(posts, ensure_ascii=False, indent=2))
-        print(f"✓ 帖子列表已保存: {posts_path} ({len(posts)} 条)")
+        path = DATA_DIR / "posts.json"
+        path.write_text(json.dumps(posts, ensure_ascii=False, indent=2))
+        print(f"✓ 纪要列表: {path} ({len(posts)} 条)")
 
     if detail:
-        detail_path = DATA_DIR / "post_detail.json"
-        detail_path.write_text(json.dumps(detail, ensure_ascii=False, indent=2))
-        print(f"✓ 帖子详情已保存: {detail_path}")
+        path = DATA_DIR / "post_detail.json"
+        path.write_text(json.dumps(detail, ensure_ascii=False, indent=2))
+        print(f"✓ 纪要详情: {path}")
 
 
 def main():
@@ -285,30 +342,24 @@ def main():
     try:
         # 2. Set up API interception
         print("\n开始拦截 API 请求...")
-        api_log = intercept_api(page)
+        capture = APICapture(page)
 
-        # Ensure we're on the forum page
-        if "forum" not in page.url:
-            print(f"当前页面: {page.url}，导航到论坛...")
-            page.goto(FORUM_URL, wait_until="domcontentloaded")
-            page.wait_for_timeout(5000)
+        # 3. Fetch 纪要 list (via API interception)
+        posts = fetch_minutes_list(page, capture)
 
-        # 3. Explore forum list
-        posts = explore_forum(page)
-
-        # 4. Explore a post detail
-        detail = explore_post_detail(page, posts)
+        # 4. Navigate to first post detail
+        detail = fetch_first_detail(page, capture, posts)
 
         # 5. Save results
-        save_results(api_log, posts, detail)
+        save_results(capture.api_log, posts, detail)
 
         print("\n" + "=" * 60)
-        print("探索完成！检查以下文件：")
+        print("探索完成！")
         print(f"  截图: {SCREENSHOTS_DIR}/")
         print(f"  API 日志: {DATA_DIR}/api_log.json")
-        print(f"  帖子列表: {DATA_DIR}/posts.json")
+        print(f"  纪要列表: {DATA_DIR}/posts.json")
         if detail:
-            print(f"  帖子详情: {DATA_DIR}/post_detail.json")
+            print(f"  纪要详情: {DATA_DIR}/post_detail.json")
         print("=" * 60)
 
     finally:
