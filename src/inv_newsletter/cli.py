@@ -24,6 +24,8 @@ def main():
     parser.add_argument("--date", default=None, help="Target date for summary (YYYY-MM-DD)")
     parser.add_argument("--monitor", "-m", action="store_true",
                         help="Auto-monitor: fetch, check sources, summarize when ready")
+    parser.add_argument("--meritco", action="store_true",
+                        help="Fetch Meritco (久谦) forum minutes for the target date")
     parser.add_argument("--publish", "-p", action="store_true",
                         help="Publish digest to Lark/Feishu after summarizing (or for existing .md)")
     parser.add_argument("--publish-file", default=None,
@@ -55,6 +57,10 @@ def main():
     # Fetch emails (unless --summarize-only)
     if not args.summarize_only:
         _do_fetch(config, base_dir, args.dry_run)
+
+    # Fetch Meritco minutes
+    if args.meritco and not args.dry_run:
+        _do_meritco(base_dir, args.date)
 
     # Summarize (if --summarize or --summarize-only)
     summary_path = None
@@ -129,6 +135,13 @@ def _do_fetch(config, base_dir: Path, dry_run: bool):
             logger.error(f"Failed to process '{email.subject}': {e}")
 
     print(f"\nFetch done. Saved: {saved}, Skipped: {skipped}, Errors: {errors}")
+
+
+def _do_meritco(base_dir: Path, target_date: str | None):
+    from inv_newsletter.meritco import fetch_meritco_minutes
+
+    saved = fetch_meritco_minutes(base_dir, target_date=target_date)
+    print(f"\nMeritco: saved {len(saved)} minutes")
 
 
 def _do_summarize(config, base_dir: Path, target_date: str | None):
