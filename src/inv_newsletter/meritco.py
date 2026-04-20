@@ -81,8 +81,11 @@ def _login(force_visible: bool = False):
     if not force_visible:
         logger.info("Meritco: trying headless session...")
         p, context, page = _launch_browser(headless=True)
-        page.goto(MINUTES_URL, wait_until="domcontentloaded")
-        page.wait_for_timeout(5000)
+        try:
+            page.goto(MINUTES_URL, wait_until="networkidle", timeout=20000)
+        except Exception:
+            # networkidle can timeout if page keeps polling; fall back
+            pass
         if _is_logged_in(page):
             logger.info("Meritco: headless session valid")
             return p, context, page
@@ -110,7 +113,14 @@ def _login(force_visible: bool = False):
 
 
 def _fetch_minutes_list(page: Page, target_date: str) -> list[dict]:
-    """Navigate to 纪要 tab and capture the forum/select/list API response."""
+    """Navigate to 纪要 tab and capture the forum/select/list API response.
+
+    Key reliability notes (learned from debugging):
+    - Must use wait_until='networkidle' so XHR responses complete before we read them
+    - Must NOT call page.goto() again while response handler is active —
+      navigating away invalidates response body buffers, causing response.json() to fail
+    - Must log exceptions from response.json(), never silently swallow them
+    """
     captured = []
 
     def handle_response(response: Response):
@@ -120,27 +130,32 @@ def _fetch_minutes_list(page: Page, target_date: str) -> list[dict]:
             body = response.json()
             items = body.get("result", {}).get("forumList", [])
             captured.extend(items)
-        except Exception:
-            pass
+            logger.debug(f"Meritco: list API returned {len(items)} items")
+        except Exception as e:
+            logger.warning(f"Meritco: failed to parse list API response: {e}")
 
     page.on("response", handle_response)
-    page.goto(MINUTES_URL, wait_until="domcontentloaded")
-    page.wait_for_timeout(5000)
+    # networkidle ensures all XHR/Fetch complete before returning,
+    # so response.json() can read the body reliably
+    page.goto(MINUTES_URL, wait_until="networkidle", timeout=30000)
     page.remove_listener("response", handle_response)
 
     # Filter to target date
-    minutes = []
-    for item in captured:
-        meeting_time = item.get("meetingTime", "")
-        if meeting_time.startswith(target_date):
-            minutes.append(item)
+    minutes = [
+        item for item in captured
+        if item.get("meetingTime", "").startswith(target_date)
+    ]
 
     logger.info(f"Meritco: {len(captured)} total minutes, {len(minutes)} on {target_date}")
     return minutes
 
 
 def _fetch_detail(page: Page, item: dict) -> str | None:
-    """Click into a minutes entry and capture the full content from API."""
+    """Navigate to a minutes detail page and capture the full content from API.
+
+    Uses networkidle to ensure response body is available before reading.
+    Does NOT navigate away until response is captured.
+    """
     item_id = item.get("id")
     expert = item.get("expertInformation", "")
     content_captured = []
@@ -154,35 +169,35 @@ def _fetch_detail(page: Page, item: dict) -> str | None:
             html = result.get("content", "")
             if html:
                 content_captured.append(html)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Meritco: failed to parse detail API response for [{item_id}]: {e}")
 
     page.on("response", handle_response)
 
-    # Navigate via base64-encoded ID
+    # Navigate via base64-encoded ID — use networkidle so response body is readable
     encoded_id = base64.b64encode(str(item_id).encode()).decode()
     detail_url = f"{BASE_URL}/forum?forumType=2&id={encoded_id}"
-    page.goto(detail_url, wait_until="domcontentloaded")
-    page.wait_for_timeout(5000)
+    page.goto(detail_url, wait_until="networkidle", timeout=30000)
     page.remove_listener("response", handle_response)
 
     if content_captured:
         logger.info(f"Meritco: captured detail for [{item_id}] {expert} ({len(content_captured[0])} chars)")
         return content_captured[0]
 
-    # Fallback: try clicking on the expert text from list page
-    logger.warning(f"Meritco: no content via URL for [{item_id}], trying click...")
-    page.goto(MINUTES_URL, wait_until="domcontentloaded")
-    page.wait_for_timeout(5000)
+    # Fallback: navigate to list, click the expert text to trigger detail API
+    logger.warning(f"Meritco: no content via URL for [{item_id}], trying click fallback...")
 
     page.on("response", handle_response)
+    page.goto(MINUTES_URL, wait_until="networkidle", timeout=30000)
     el = page.query_selector(f"text={expert}")
     if el:
         el.click()
+        # Wait for the detail API response (no page navigation, just XHR)
         page.wait_for_timeout(5000)
     page.remove_listener("response", handle_response)
 
     if content_captured:
+        logger.info(f"Meritco: captured detail via click for [{item_id}] ({len(content_captured[0])} chars)")
         return content_captured[0]
 
     logger.warning(f"Meritco: failed to get content for [{item_id}]")
