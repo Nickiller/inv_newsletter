@@ -87,6 +87,7 @@ def summarize_daily(
     target_date: str | None = None,
     model: str = "claude-sonnet-4-20250514",
     max_tokens: int = 16000,
+    meritco_dir: Path | None = None,
 ) -> Path:
     """Load emails for a date, call Claude API, write digest. Returns output path."""
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -108,6 +109,15 @@ def summarize_daily(
 
     date_dir = data_dir / target_date
     emails = _load_emails(date_dir)
+
+    # Also load Meritco minutes if meritco_dir is set
+    if meritco_dir is not None:
+        meritco_date_dir = meritco_dir / target_date
+        if meritco_date_dir.exists():
+            meritco_emails = _load_meritco(meritco_date_dir)
+            logger.info(f"Loaded {len(meritco_emails)} Meritco minutes for {target_date}")
+            emails.extend(meritco_emails)
+
     if not emails:
         raise RuntimeError(f"No emails found for {target_date}")
 
@@ -196,6 +206,24 @@ def _load_emails(date_dir: Path) -> list[dict]:
             })
         except Exception as e:
             logger.warning(f"Failed to load {email_md}: {e}")
+    return emails
+
+
+def _load_meritco(meritco_date_dir: Path) -> list[dict]:
+    """Load all [YYMMDD]_meritco_*.md files from a meritco date directory."""
+    emails = []
+    for md_file in sorted(meritco_date_dir.glob("*_meritco_*.md")):
+        try:
+            raw = md_file.read_text(encoding="utf-8")
+            frontmatter, body = _parse_frontmatter(raw)
+            emails.append({
+                "dir": meritco_date_dir,
+                "frontmatter": frontmatter,
+                "body": body,
+                "images": [],
+            })
+        except Exception as e:
+            logger.warning(f"Failed to load {md_file}: {e}")
     return emails
 
 

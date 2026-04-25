@@ -3,11 +3,13 @@
 import base64
 import json
 import logging
+import os
 import re
 import time
 from datetime import datetime
 from pathlib import Path
 
+import anthropic
 from playwright.sync_api import sync_playwright, Page, Response
 
 logger = logging.getLogger(__name__)
@@ -15,6 +17,7 @@ logger = logging.getLogger(__name__)
 BROWSER_STATE_DIR = Path(".browser_state_meritco")
 BASE_URL = "https://research.meritco-group.com"
 MINUTES_URL = f"{BASE_URL}/forum?forumType=2"
+MERITCO_DATA_DIR = Path("data/meritco")
 
 
 # ---------------------------------------------------------------------------
@@ -161,14 +164,19 @@ def _fetch_detail(page: Page, item: dict) -> str | None:
     content_captured = []
 
     def handle_response(response: Response):
+        if "/forum/" in response.url or "forum/select" in response.url:
+            logger.debug(f"Meritco: response url [{item_id}]: {response.url} status={response.status}")
         if "forum/select/id" not in response.url:
             return
         try:
             body = response.json()
             result = body.get("result", {})
             html = result.get("content", "")
+            logger.debug(f"Meritco: detail response [{item_id}]: result keys={list(result.keys())}, content len={len(html)}")
             if html:
                 content_captured.append(html)
+            else:
+                logger.warning(f"Meritco: empty content field for [{item_id}], result={result}")
         except Exception as e:
             logger.warning(f"Meritco: failed to parse detail API response for [{item_id}]: {e}")
 
@@ -208,33 +216,62 @@ def _fetch_detail(page: Page, item: dict) -> str | None:
 # Save as email.md
 # ---------------------------------------------------------------------------
 
-def _make_slug(item: dict) -> str:
-    """Generate slug for Meritco minutes directory."""
-    meeting_time = item.get("meetingTime", "")
-    # Extract HHMM from meeting time
-    try:
-        dt = datetime.strptime(meeting_time, "%Y-%m-%d %H:%M:%S")
-        time_prefix = dt.strftime("%H%M")
-    except (ValueError, TypeError):
-        time_prefix = "0000"
-
-    expert = item.get("expertInformation", "unknown")
-    # Build readable slug
+def _haiku_slug(item: dict) -> str:
+    """Call Claude Haiku to generate a short filename slug with tickers."""
+    title = item.get("title", "")
+    summary = item.get("summary", "")
     targets = item.get("relatedTargets", [])
-    target_str = "-".join(t.lower() for t in targets[:3]) if targets else ""
+    expert = item.get("expertInformation", "")
 
-    parts = [time_prefix]
-    if target_str:
-        parts.append(target_str)
-    parts.append("meritco")
-    return "-".join(parts)
+    ticker_str = "/".join(targets[:4]) if targets else ""
+    prompt = (
+        f"为以下久谦专家纪要生成一个简短英文文件名（不含扩展名），要求：\n"
+        f"1. 包含相关Ticker（如有），格式：TICKER1_TICKER2_核心主题\n"
+        f"2. 核心主题用英文或拼音，3-6个词，突出最关键结论\n"
+        f"3. 只用字母、数字、下划线，不含空格和特殊字符\n"
+        f"4. 总长度不超过50个字符\n\n"
+        f"Ticker: {ticker_str}\n"
+        f"专家: {expert}\n"
+        f"标题: {title}\n"
+        f"摘要: {summary[:200]}\n\n"
+        f"只输出文件名，不加任何解释。"
+    )
+
+    try:
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        base_url = os.environ.get("ANTHROPIC_BASE_URL")
+        client = anthropic.Anthropic(api_key=api_key, base_url=base_url)
+        resp = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=64,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        slug = resp.content[0].text.strip()
+        # Extra sanitize
+        slug = re.sub(r'[^A-Za-z0-9_\-]', "_", slug)
+        slug = re.sub(r"_+", "_", slug).strip("_")
+        return slug[:60]
+    except Exception as e:
+        logger.warning(f"Haiku slug generation failed: {e}, falling back to title")
+        fallback = re.sub(r'[\\/*?:"<>|]', "", title)
+        fallback = re.sub(r"\s+", "_", fallback.strip())
+        return fallback[:50]
 
 
-def _save_minute_as_email(item: dict, content_html: str, base_dir: Path, target_date: str) -> Path:
-    """Save a Meritco minutes entry as email.md."""
-    slug = _make_slug(item)
-    email_dir = base_dir / target_date / slug
-    email_dir.mkdir(parents=True, exist_ok=True)
+def _make_filename(item: dict, target_date: str) -> str:
+    """Generate filename: [YYMMDD]_meritco_{haiku_slug}.md"""
+    yymmdd = target_date.replace("-", "")[2:]  # 2026-04-23 → 260423
+    slug = _haiku_slug(item)
+    return f"[{yymmdd}]_meritco_{slug}.md"
+
+
+def _save_minute(item: dict, content_html: str, base_dir: Path, target_date: str) -> Path:
+    """Save a Meritco minutes entry as [YYMMDD]_meritco_{title}.md."""
+    date_dir = base_dir / target_date
+    date_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = _make_filename(item, target_date)
+    out_path = date_dir / filename
 
     # Convert HTML to markdown
     body_md = html_to_markdown(content_html)
@@ -247,7 +284,6 @@ def _save_minute_as_email(item: dict, content_html: str, base_dir: Path, target_
     author = item.get("author", "")
     industry = item.get("industry", "")
 
-    # Build frontmatter matching the email.md format
     frontmatter = (
         "---\n"
         f"id: \"meritco-{item.get('id', '')}\"\n"
@@ -263,7 +299,6 @@ def _save_minute_as_email(item: dict, content_html: str, base_dir: Path, target_
         "---\n\n"
     )
 
-    # Build content with metadata header
     header = f"# {title}\n\n"
     header += f"**专家**: {expert} | **行业**: {industry} | **分析师**: {author}\n"
     if targets:
@@ -273,11 +308,9 @@ def _save_minute_as_email(item: dict, content_html: str, base_dir: Path, target_
         header += f"> **摘要**: {summary}\n\n"
     header += "---\n\n"
 
-    md_content = frontmatter + header + body_md
-    (email_dir / "email.md").write_text(md_content, encoding="utf-8")
-
-    logger.info(f"Saved Meritco minute: {slug}")
-    return email_dir
+    out_path.write_text(frontmatter + header + body_md, encoding="utf-8")
+    logger.info(f"Saved Meritco minute: {filename}")
+    return out_path
 
 
 def _escape_yaml(s: str) -> str:
@@ -289,12 +322,15 @@ def _escape_yaml(s: str) -> str:
 # ---------------------------------------------------------------------------
 
 def fetch_meritco_minutes(
-    base_dir: Path,
+    base_dir: Path = MERITCO_DATA_DIR,
     target_date: str | None = None,
     force_visible: bool = False,
+    exclude_industries: list[str] | None = None,
 ) -> list[Path]:
     """Fetch Meritco minutes for a date and save as email.md files.
 
+    Args:
+        exclude_industries: Industry keywords to skip (e.g. ["医疗", "医药", "健康"]).
     Returns list of saved directory paths.
     """
     if target_date is None:
@@ -310,14 +346,23 @@ def fetch_meritco_minutes(
             logger.info(f"Meritco: no minutes found for {target_date}")
             return []
 
+        # Filter out excluded industries
+        if exclude_industries:
+            before = len(minutes)
+            minutes = [
+                item for item in minutes
+                if not any(kw in (item.get("industry") or "") for kw in exclude_industries)
+            ]
+            logger.info(f"Meritco: excluded {before - len(minutes)} items by industry filter")
+
         logger.info(f"Meritco: fetching {len(minutes)} minutes for {target_date}")
 
         for item in minutes:
             item_id = item.get("id")
             # Check if already fetched
-            slug = _make_slug(item)
-            email_md = base_dir / target_date / slug / "email.md"
-            if email_md.exists():
+            filename = _make_filename(item, target_date)
+            out_path = base_dir / target_date / filename
+            if out_path.exists():
                 logger.info(f"Meritco: skipping [{item_id}] (already exists)")
                 continue
 
@@ -325,7 +370,7 @@ def fetch_meritco_minutes(
             if not content_html:
                 continue
 
-            path = _save_minute_as_email(item, content_html, base_dir, target_date)
+            path = _save_minute(item, content_html, base_dir, target_date)
             saved_dirs.append(path)
 
     finally:

@@ -26,6 +26,10 @@ def main():
                         help="Auto-monitor: fetch, check sources, summarize when ready")
     parser.add_argument("--meritco", action="store_true",
                         help="Fetch Meritco (久谦) forum minutes for the target date")
+    parser.add_argument("--meritco-dates", default=None,
+                        help="Comma-separated dates to fetch Meritco minutes (e.g. 2026-04-23,2026-04-24)")
+    parser.add_argument("--exclude-industry", default=None,
+                        help="Comma-separated industry keywords to skip (e.g. 医疗,医药,健康)")
     parser.add_argument("--publish", "-p", action="store_true",
                         help="Publish digest to Lark/Feishu after summarizing (or for existing .md)")
     parser.add_argument("--publish-file", default=None,
@@ -59,8 +63,12 @@ def main():
         _do_fetch(config, base_dir, args.dry_run)
 
     # Fetch Meritco minutes
-    if args.meritco and not args.dry_run:
-        _do_meritco(base_dir, args.date)
+    exclude_industries = [s.strip() for s in args.exclude_industry.split(",")] if args.exclude_industry else None
+    if args.meritco_dates and not args.dry_run:
+        for d in [s.strip() for s in args.meritco_dates.split(",")]:
+            _do_meritco(d, exclude_industries)
+    elif args.meritco and not args.dry_run:
+        _do_meritco(args.date, exclude_industries)
 
     # Summarize (if --summarize or --summarize-only)
     summary_path = None
@@ -137,14 +145,15 @@ def _do_fetch(config, base_dir: Path, dry_run: bool):
     print(f"\nFetch done. Saved: {saved}, Skipped: {skipped}, Errors: {errors}")
 
 
-def _do_meritco(base_dir: Path, target_date: str | None):
-    from inv_newsletter.meritco import fetch_meritco_minutes
+def _do_meritco(target_date: str | None, exclude_industries: list[str] | None = None):
+    from inv_newsletter.meritco import MERITCO_DATA_DIR, fetch_meritco_minutes
 
-    saved = fetch_meritco_minutes(base_dir, target_date=target_date)
-    print(f"\nMeritco: saved {len(saved)} minutes")
+    saved = fetch_meritco_minutes(MERITCO_DATA_DIR, target_date=target_date, exclude_industries=exclude_industries)
+    print(f"\nMeritco: saved {len(saved)} minutes for {target_date}")
 
 
 def _do_summarize(config, base_dir: Path, target_date: str | None):
+    from inv_newsletter.meritco import MERITCO_DATA_DIR
     from inv_newsletter.summarizer import summarize_daily
 
     sum_cfg = config.summarization
@@ -154,6 +163,7 @@ def _do_summarize(config, base_dir: Path, target_date: str | None):
         target_date=target_date,
         model=sum_cfg.model,
         max_tokens=sum_cfg.max_tokens,
+        meritco_dir=MERITCO_DATA_DIR if MERITCO_DATA_DIR.exists() else None,
     )
 
     print(f"\nSaved to: {output_path}")
