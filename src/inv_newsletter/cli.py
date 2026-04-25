@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-    load_dotenv()
+    load_dotenv(override=True)
 
     parser = argparse.ArgumentParser(description="Fetch and summarize investment emails")
     parser.add_argument("--config", "-c", default="filters.yaml", help="Path to filters config")
