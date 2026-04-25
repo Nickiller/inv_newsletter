@@ -2,6 +2,7 @@
 .env
 .token_cache/
 .browser_state/
+.browser_state_meritco/
 
 # Data (large, sensitive, regeneratable)
 data/
