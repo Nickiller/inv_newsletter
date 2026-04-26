@@ -1,4 +1,14 @@
-"""Meritco (久谦) forum minutes fetcher — scrape and save as email.md for summarizer."""
+"""Meritco (久谦) forum minutes fetcher — pure HTTP + reverse-engineered signing.
+
+Architecture:
+- Playwright is used ONLY for the initial login flow (扫码 + capture token from
+  localStorage). Token is cached to disk and reused for weeks.
+- All API calls go through plain `requests` with the RSA-signed `X-My-Header`
+  header, computed from the token + business field (forumId / page+keyword).
+
+The signing algorithm was extracted from the frontend bundle:
+  X-My-Header = base64( RSA_PKCS1v15_encrypt( token + business_field, PUBLIC_KEY ) )
+"""
 
 import base64
 import json
@@ -10,14 +20,235 @@ from datetime import datetime
 from pathlib import Path
 
 import anthropic
-from playwright.sync_api import sync_playwright, Page, Response
+import requests
+from Crypto.Cipher import PKCS1_v1_5
+from Crypto.PublicKey import RSA
 
 logger = logging.getLogger(__name__)
 
-BROWSER_STATE_DIR = Path(".browser_state_meritco")
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+
 BASE_URL = "https://research.meritco-group.com"
+API_BASE = f"{BASE_URL}/matrix-search"
 MINUTES_URL = f"{BASE_URL}/forum?forumType=2"
 MERITCO_DATA_DIR = Path("data/meritco")
+
+BROWSER_STATE_DIR = Path(".browser_state_meritco")
+TOKEN_CACHE_FILE = Path(".token_cache/meritco_token.json")
+
+USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+)
+
+# RSA-2048 public key extracted from app.d55168a2.js (chunks reversed + concat).
+# Used to sign X-My-Header per request.
+PUBLIC_KEY_PEM = """-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0q3O3srLBw1roKRa8D8D
+CUb5yy1uCZJV0WN20h7ePPj3QlUsJNKsIyuxptsV8ql2aBKjcm+tjLx8s+463m8P
+MTdqoJdFaabH+dxa3/0tSMZbyWFCnm0OLzGT4PhVXxTq9MNjjIh5DZFhX5NSPtQU
+8acmj2551vhzNpwnHqf6hgwVZdCUASNqqp5kOA81DYekT5soFtlZMp/StpXUHa0S
+xck1rFkpwjyk0YAXwAnsTdycJovwsnbX0jwFmLqNYW3qtJYKJr5yOHRgMaNojmR/
+TliA4DbroIMnChJs+5G4EFUInE6H6eTmi3CxJARDTY39MLjT8ZQGmLXdComHLCEo
+LwIDAQAB
+-----END PUBLIC KEY-----"""
+
+_RSA_KEY = RSA.import_key(PUBLIC_KEY_PEM)
+_CIPHER = PKCS1_v1_5.new(_RSA_KEY)
+
+
+def _sign(plaintext: str) -> str:
+    """Return base64(RSA_PKCS1v15_encrypt(plaintext, PUBLIC_KEY))."""
+    return base64.b64encode(_CIPHER.encrypt(plaintext.encode())).decode()
+
+
+# ---------------------------------------------------------------------------
+# Token cache + login
+# ---------------------------------------------------------------------------
+
+def _load_cached_token() -> str | None:
+    if not TOKEN_CACHE_FILE.exists():
+        return None
+    try:
+        data = json.loads(TOKEN_CACHE_FILE.read_text())
+        return data.get("token")
+    except Exception as e:
+        logger.warning(f"Meritco: failed to read token cache: {e}")
+        return None
+
+
+def _save_token(token: str) -> None:
+    TOKEN_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    TOKEN_CACHE_FILE.write_text(json.dumps({
+        "token": token,
+        "saved_at": datetime.now().isoformat(),
+    }))
+    logger.info(f"Meritco: token cached to {TOKEN_CACHE_FILE}")
+
+
+def _login_capture_token(force_visible: bool = False) -> str:
+    """Launch Playwright to login and grab token from localStorage.
+
+    Tries headless first (using persistent browser state), falls back to visible
+    so user can scan the WeChat QR code.
+    """
+    from playwright.sync_api import sync_playwright
+
+    BROWSER_STATE_DIR.mkdir(parents=True, exist_ok=True)
+
+    with sync_playwright() as p:
+        # Headless attempt first
+        if not force_visible:
+            logger.info("Meritco: trying headless session for token capture...")
+            ctx = p.chromium.launch_persistent_context(
+                user_data_dir=str(BROWSER_STATE_DIR),
+                headless=True,
+                channel="chrome",
+                viewport={"width": 1440, "height": 900},
+            )
+            page = ctx.pages[0] if ctx.pages else ctx.new_page()
+            try:
+                page.goto(MINUTES_URL, wait_until="domcontentloaded", timeout=15000)
+                page.wait_for_timeout(3000)
+                token = page.evaluate("() => window.localStorage.getItem('token')")
+                if token and token != "ceshitoken":
+                    logger.info("Meritco: headless session valid, captured token")
+                    ctx.close()
+                    return token
+            except Exception as e:
+                logger.info(f"Meritco: headless capture failed ({e}), switching to visible")
+            ctx.close()
+
+        # Visible login
+        print("\n" + "=" * 60)
+        print("浏览器已打开，请用微信扫码登录久谦论坛。")
+        print("登录完成后脚本会自动捕获 token（最多等待 120 秒）。")
+        print("=" * 60 + "\n")
+
+        ctx = p.chromium.launch_persistent_context(
+            user_data_dir=str(BROWSER_STATE_DIR),
+            headless=False,
+            channel="chrome",
+            viewport={"width": 1440, "height": 900},
+        )
+        page = ctx.pages[0] if ctx.pages else ctx.new_page()
+        page.goto(MINUTES_URL, wait_until="domcontentloaded")
+
+        deadline = time.time() + 120
+        while time.time() < deadline:
+            page.wait_for_timeout(2000)
+            try:
+                token = page.evaluate("() => window.localStorage.getItem('token')")
+                if token and token != "ceshitoken":
+                    logger.info("Meritco: login successful, captured token")
+                    ctx.close()
+                    return token
+            except Exception:
+                continue
+
+        ctx.close()
+        raise RuntimeError("久谦登录超时（120 秒），请重试。")
+
+
+def _get_token(force_relogin: bool = False) -> str:
+    """Return a valid Meritco session token, logging in if needed."""
+    if not force_relogin:
+        token = _load_cached_token()
+        if token:
+            return token
+    token = _login_capture_token(force_visible=False)
+    _save_token(token)
+    return token
+
+
+# ---------------------------------------------------------------------------
+# API calls (signed)
+# ---------------------------------------------------------------------------
+
+def _common_headers(token: str) -> dict:
+    return {
+        "accept": "application/json, text/plain, */*",
+        "accept-language": "zh-CN",
+        "content-type": "application/json;charset=UTF-8",
+        "origin": BASE_URL,
+        "referer": f"{BASE_URL}/",
+        "token": token,
+        "user-agent": USER_AGENT,
+    }
+
+
+def _post_signed(url: str, token: str, body: dict, sign_input: str) -> dict:
+    """POST a signed request. Raises on non-200 or auth failure."""
+    headers = _common_headers(token)
+    headers["x-my-header"] = _sign(sign_input)
+    r = requests.post(
+        url,
+        headers=headers,
+        cookies={"X-User-Type": "default"},
+        json=body,
+        timeout=30,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def _fetch_minutes_list(token: str, page: int = 1, page_size: int = 50) -> list[dict]:
+    """POST /forum/select/list — sign input is token + keyword + page."""
+    body = {
+        "forumId": None,
+        "page": page,
+        "pageSize": page_size,
+        "module": "CLASSIC_ALL_SEARCH",
+        "contentTag": "",
+        "publishTime": "",
+        "codeIndustryId": "",
+        "totalPage": "5",
+        "sortColumn": "articleDate",
+        "source": "",
+        "reportTag": "全部标签",
+        "platformArr": [
+            "专业内容-纪要-国内市场-专家访谈",
+            "专业内容-纪要-国内市场-业绩交流",
+            "专业内容-纪要-国内市场-券商路演",
+            "专业内容-纪要-海外市场",
+            "专业内容-研报-国内市场",
+            "专业内容-研报-海外市场",
+            "专业内容-其他报告",
+        ],
+        "outCat1": "",
+        "orgNameList": [],
+        "outCat2": "",
+        "keyword": "",
+        "type": 2,
+        "industryList": [],
+        "expertType": "",
+        "meetingStartTime": "",
+        "meetingEndTime": "",
+        "queryHotListFlag": False,
+        "sort": 2,
+        "platform": "RESEARCH_PC",
+    }
+    keyword = body["keyword"]
+    sign_input = token + str(keyword) + str(page)
+    resp = _post_signed(f"{API_BASE}/forum/select/list", token, body, sign_input)
+    if resp.get("code") != 200:
+        raise RuntimeError(f"Meritco list API error: {resp.get('message')}")
+    return resp.get("result", {}).get("forumList", [])
+
+
+def _fetch_minute_detail(token: str, forum_id: int) -> str | None:
+    """POST /forum/select/id?forumId=X — sign input is token + forumId."""
+    body = {"platform": "RESEARCH_PC"}
+    sign_input = token + str(forum_id)
+    url = f"{API_BASE}/forum/select/id?forumId={forum_id}"
+    resp = _post_signed(url, token, body, sign_input)
+    if resp.get("code") != 200:
+        logger.warning(f"Meritco detail API error for {forum_id}: {resp.get('message')}")
+        return None
+    result = resp.get("result") or {}
+    return result.get("content") or None
 
 
 # ---------------------------------------------------------------------------
@@ -29,191 +260,22 @@ def html_to_markdown(html: str) -> str:
 
     Input is structured as <h2> questions (blue) + <p> answers.
     """
-    # Remove style attributes
     text = re.sub(r'\s+style="[^"]*"', "", html)
-    # Convert Q headings
     text = re.sub(r"<h2[^>]*><span[^>]*>(.*?)</span></h2>", r"\n**\1**\n", text)
     text = re.sub(r"<h2[^>]*>(.*?)</h2>", r"\n**\1**\n", text)
-    # Convert paragraphs
     text = re.sub(r"<p[^>]*>(.*?)</p>", r"\1\n", text)
-    # Convert bold/underline
     text = re.sub(r"<strong>(.*?)</strong>", r"**\1**", text)
     text = re.sub(r"<u>(.*?)</u>", r"\1", text)
     text = re.sub(r"<em>(.*?)</em>", r"*\1*", text)
-    # Remove remaining tags
     text = re.sub(r"<[^>]+>", "", text)
-    # Clean entities
     text = text.replace("&nbsp;", " ").replace("&amp;", "&")
     text = text.replace("&lt;", "<").replace("&gt;", ">")
-    # Normalize whitespace
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
 
 # ---------------------------------------------------------------------------
-# Browser session / API
-# ---------------------------------------------------------------------------
-
-def _launch_browser(headless: bool):
-    """Launch persistent browser context. Returns (playwright, context, page)."""
-    p = sync_playwright().start()
-    BROWSER_STATE_DIR.mkdir(parents=True, exist_ok=True)
-    context = p.chromium.launch_persistent_context(
-        user_data_dir=str(BROWSER_STATE_DIR),
-        headless=headless,
-        channel="chrome",
-        viewport={"width": 1440, "height": 900},
-    )
-    page = context.pages[0] if context.pages else context.new_page()
-    return p, context, page
-
-
-def _is_logged_in(page: Page) -> bool:
-    page.wait_for_timeout(3000)
-    url = page.url
-    if "login" in url.lower() or "auth" in url.lower():
-        return False
-    content = page.content().lower()
-    if ("扫码" in content or "微信登录" in content) and "forum" not in url:
-        return False
-    return True
-
-
-def _login(force_visible: bool = False):
-    """Login flow: headless first, then visible. Returns (playwright, context, page)."""
-    if not force_visible:
-        logger.info("Meritco: trying headless session...")
-        p, context, page = _launch_browser(headless=True)
-        try:
-            page.goto(MINUTES_URL, wait_until="networkidle", timeout=20000)
-        except Exception:
-            # networkidle can timeout if page keeps polling; fall back
-            pass
-        if _is_logged_in(page):
-            logger.info("Meritco: headless session valid")
-            return p, context, page
-        logger.info("Meritco: headless failed, switching to visible...")
-        context.close()
-        p.stop()
-
-    print("\n" + "=" * 60)
-    print("浏览器已打开，请扫码登录久谦论坛。")
-    print("登录完成后脚本会自动继续（最多等待 120 秒）。")
-    print("=" * 60 + "\n")
-
-    p, context, page = _launch_browser(headless=False)
-    page.goto(MINUTES_URL, wait_until="domcontentloaded")
-
-    start = time.time()
-    while (time.time() - start) < 120:
-        page.wait_for_timeout(3000)
-        if _is_logged_in(page):
-            logger.info("Meritco: login successful")
-            page.wait_for_timeout(3000)
-            return p, context, page
-
-    raise RuntimeError("久谦登录超时（120 秒），请重试。")
-
-
-def _fetch_minutes_list(page: Page, target_date: str) -> list[dict]:
-    """Navigate to 纪要 tab and capture the forum/select/list API response.
-
-    Key reliability notes (learned from debugging):
-    - Must use wait_until='networkidle' so XHR responses complete before we read them
-    - Must NOT call page.goto() again while response handler is active —
-      navigating away invalidates response body buffers, causing response.json() to fail
-    - Must log exceptions from response.json(), never silently swallow them
-    """
-    captured = []
-
-    def handle_response(response: Response):
-        if "forum/select/list" not in response.url:
-            return
-        try:
-            body = response.json()
-            items = body.get("result", {}).get("forumList", [])
-            captured.extend(items)
-            logger.debug(f"Meritco: list API returned {len(items)} items")
-        except Exception as e:
-            logger.warning(f"Meritco: failed to parse list API response: {e}")
-
-    page.on("response", handle_response)
-    # networkidle ensures all XHR/Fetch complete before returning,
-    # so response.json() can read the body reliably
-    page.goto(MINUTES_URL, wait_until="networkidle", timeout=30000)
-    page.remove_listener("response", handle_response)
-
-    # Filter to target date
-    minutes = [
-        item for item in captured
-        if item.get("meetingTime", "").startswith(target_date)
-    ]
-
-    logger.info(f"Meritco: {len(captured)} total minutes, {len(minutes)} on {target_date}")
-    return minutes
-
-
-def _fetch_detail(page: Page, item: dict) -> str | None:
-    """Navigate to a minutes detail page and capture the full content from API.
-
-    Uses networkidle to ensure response body is available before reading.
-    Does NOT navigate away until response is captured.
-    """
-    item_id = item.get("id")
-    expert = item.get("expertInformation", "")
-    content_captured = []
-
-    def handle_response(response: Response):
-        if "/forum/" in response.url or "forum/select" in response.url:
-            logger.debug(f"Meritco: response url [{item_id}]: {response.url} status={response.status}")
-        if "forum/select/id" not in response.url:
-            return
-        try:
-            body = response.json()
-            result = body.get("result", {})
-            html = result.get("content", "")
-            logger.debug(f"Meritco: detail response [{item_id}]: result keys={list(result.keys())}, content len={len(html)}")
-            if html:
-                content_captured.append(html)
-            else:
-                logger.warning(f"Meritco: empty content field for [{item_id}], result={result}")
-        except Exception as e:
-            logger.warning(f"Meritco: failed to parse detail API response for [{item_id}]: {e}")
-
-    page.on("response", handle_response)
-
-    # Navigate via base64-encoded ID — use networkidle so response body is readable
-    encoded_id = base64.b64encode(str(item_id).encode()).decode()
-    detail_url = f"{BASE_URL}/forum?forumType=2&id={encoded_id}"
-    page.goto(detail_url, wait_until="networkidle", timeout=30000)
-    page.remove_listener("response", handle_response)
-
-    if content_captured:
-        logger.info(f"Meritco: captured detail for [{item_id}] {expert} ({len(content_captured[0])} chars)")
-        return content_captured[0]
-
-    # Fallback: navigate to list, click the expert text to trigger detail API
-    logger.warning(f"Meritco: no content via URL for [{item_id}], trying click fallback...")
-
-    page.on("response", handle_response)
-    page.goto(MINUTES_URL, wait_until="networkidle", timeout=30000)
-    el = page.query_selector(f"text={expert}")
-    if el:
-        el.click()
-        # Wait for the detail API response (no page navigation, just XHR)
-        page.wait_for_timeout(5000)
-    page.remove_listener("response", handle_response)
-
-    if content_captured:
-        logger.info(f"Meritco: captured detail via click for [{item_id}] ({len(content_captured[0])} chars)")
-        return content_captured[0]
-
-    logger.warning(f"Meritco: failed to get content for [{item_id}]")
-    return None
-
-
-# ---------------------------------------------------------------------------
-# Save as email.md
+# Save as markdown file
 # ---------------------------------------------------------------------------
 
 def _haiku_slug(item: dict) -> str:
@@ -247,7 +309,6 @@ def _haiku_slug(item: dict) -> str:
             messages=[{"role": "user", "content": prompt}],
         )
         slug = resp.content[0].text.strip()
-        # Extra sanitize
         slug = re.sub(r'[^A-Za-z0-9_\-]', "_", slug)
         slug = re.sub(r"_+", "_", slug).strip("_")
         return slug[:60]
@@ -260,20 +321,22 @@ def _haiku_slug(item: dict) -> str:
 
 def _make_filename(item: dict, target_date: str) -> str:
     """Generate filename: [YYMMDD]_meritco_{haiku_slug}.md"""
-    yymmdd = target_date.replace("-", "")[2:]  # 2026-04-23 → 260423
+    yymmdd = target_date.replace("-", "")[2:]
     slug = _haiku_slug(item)
     return f"[{yymmdd}]_meritco_{slug}.md"
 
 
+def _escape_yaml(s: str) -> str:
+    return s.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def _save_minute(item: dict, content_html: str, base_dir: Path, target_date: str) -> Path:
-    """Save a Meritco minutes entry as [YYMMDD]_meritco_{title}.md."""
     date_dir = base_dir / target_date
     date_dir.mkdir(parents=True, exist_ok=True)
 
     filename = _make_filename(item, target_date)
     out_path = date_dir / filename
 
-    # Convert HTML to markdown
     body_md = html_to_markdown(content_html)
 
     title = item.get("title", "")
@@ -313,10 +376,6 @@ def _save_minute(item: dict, content_html: str, base_dir: Path, target_date: str
     return out_path
 
 
-def _escape_yaml(s: str) -> str:
-    return s.replace("\\", "\\\\").replace('"', '\\"')
-
-
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -327,55 +386,69 @@ def fetch_meritco_minutes(
     force_visible: bool = False,
     exclude_industries: list[str] | None = None,
 ) -> list[Path]:
-    """Fetch Meritco minutes for a date and save as email.md files.
+    """Fetch Meritco minutes for a date and save as markdown files.
 
     Args:
+        force_visible: If True, force re-login via visible browser (token refresh).
         exclude_industries: Industry keywords to skip (e.g. ["医疗", "医药", "健康"]).
-    Returns list of saved directory paths.
+    Returns list of saved file paths.
     """
     if target_date is None:
         target_date = datetime.now().strftime("%Y-%m-%d")
 
-    p, context, page = _login(force_visible=force_visible)
-    saved_dirs = []
+    # Get token (cached or fresh login)
+    if force_visible:
+        token = _login_capture_token(force_visible=True)
+        _save_token(token)
+    else:
+        token = _get_token()
 
+    saved_paths: list[Path] = []
+
+    # Try fetching list; on auth failure, re-login once and retry
     try:
-        # Get minutes list for target date
-        minutes = _fetch_minutes_list(page, target_date)
-        if not minutes:
-            logger.info(f"Meritco: no minutes found for {target_date}")
-            return []
+        minutes = _fetch_minutes_list(token)
+    except (requests.HTTPError, RuntimeError) as e:
+        logger.warning(f"Meritco: list fetch failed ({e}), re-logging in...")
+        token = _login_capture_token(force_visible=False)
+        _save_token(token)
+        minutes = _fetch_minutes_list(token)
 
-        # Filter out excluded industries
-        if exclude_industries:
-            before = len(minutes)
-            minutes = [
-                item for item in minutes
-                if not any(kw in (item.get("industry") or "") for kw in exclude_industries)
-            ]
-            logger.info(f"Meritco: excluded {before - len(minutes)} items by industry filter")
+    # Filter to target date
+    minutes = [m for m in minutes if (m.get("meetingTime") or "").startswith(target_date)]
+    logger.info(f"Meritco: {len(minutes)} minutes on {target_date}")
 
-        logger.info(f"Meritco: fetching {len(minutes)} minutes for {target_date}")
+    if not minutes:
+        return []
 
-        for item in minutes:
-            item_id = item.get("id")
-            # Check if already fetched
-            filename = _make_filename(item, target_date)
-            out_path = base_dir / target_date / filename
-            if out_path.exists():
-                logger.info(f"Meritco: skipping [{item_id}] (already exists)")
-                continue
+    if exclude_industries:
+        before = len(minutes)
+        minutes = [
+            m for m in minutes
+            if not any(kw in (m.get("industry") or "") for kw in exclude_industries)
+        ]
+        logger.info(f"Meritco: excluded {before - len(minutes)} items by industry filter")
 
-            content_html = _fetch_detail(page, item)
-            if not content_html:
-                continue
+    for item in minutes:
+        item_id = item.get("id")
+        filename = _make_filename(item, target_date)
+        out_path = base_dir / target_date / filename
+        if out_path.exists():
+            logger.info(f"Meritco: skipping [{item_id}] (already exists)")
+            continue
 
-            path = _save_minute(item, content_html, base_dir, target_date)
-            saved_dirs.append(path)
+        try:
+            content_html = _fetch_minute_detail(token, item_id)
+        except requests.HTTPError as e:
+            logger.warning(f"Meritco: detail fetch failed for [{item_id}]: {e}")
+            continue
 
-    finally:
-        context.close()
-        p.stop()
+        if not content_html:
+            logger.warning(f"Meritco: no content for [{item_id}]")
+            continue
 
-    logger.info(f"Meritco: saved {len(saved_dirs)} minutes to {base_dir / target_date}")
-    return saved_dirs
+        path = _save_minute(item, content_html, base_dir, target_date)
+        saved_paths.append(path)
+
+    logger.info(f"Meritco: saved {len(saved_paths)} minutes to {base_dir / target_date}")
+    return saved_paths

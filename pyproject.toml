@@ -12,6 +12,7 @@ dependencies = [
     "anthropic>=0.42.0",
     "twikit>=2.0.0",
     "truthbrush>=0.5.0",
+    "pycryptodome>=3.21.0",
 ]
 
 [project.scripts]
