@@ -13,13 +13,11 @@ The signing algorithm was extracted from the frontend bundle:
 import base64
 import json
 import logging
-import os
 import re
 import time
 from datetime import datetime
 from pathlib import Path
 
-import anthropic
 import requests
 from Crypto.Cipher import PKCS1_v1_5
 from Crypto.PublicKey import RSA
@@ -278,52 +276,18 @@ def html_to_markdown(html: str) -> str:
 # Save as markdown file
 # ---------------------------------------------------------------------------
 
-def _haiku_slug(item: dict) -> str:
-    """Call Claude Haiku to generate a short filename slug with tickers."""
-    title = item.get("title", "")
-    summary = item.get("summary", "")
-    targets = item.get("relatedTargets", [])
-    expert = item.get("expertInformation", "")
-
-    ticker_str = "/".join(targets[:4]) if targets else ""
-    prompt = (
-        f"为以下久谦专家纪要生成一个简短英文文件名（不含扩展名），要求：\n"
-        f"1. 包含相关Ticker（如有），格式：TICKER1_TICKER2_核心主题\n"
-        f"2. 核心主题用英文或拼音，3-6个词，突出最关键结论\n"
-        f"3. 只用字母、数字、下划线，不含空格和特殊字符\n"
-        f"4. 总长度不超过50个字符\n\n"
-        f"Ticker: {ticker_str}\n"
-        f"专家: {expert}\n"
-        f"标题: {title}\n"
-        f"摘要: {summary[:200]}\n\n"
-        f"只输出文件名，不加任何解释。"
-    )
-
-    try:
-        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-        base_url = os.environ.get("ANTHROPIC_BASE_URL")
-        client = anthropic.Anthropic(api_key=api_key, base_url=base_url)
-        resp = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=64,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        slug = resp.content[0].text.strip()
-        slug = re.sub(r'[^A-Za-z0-9_\-]', "_", slug)
-        slug = re.sub(r"_+", "_", slug).strip("_")
-        return slug[:60]
-    except Exception as e:
-        logger.warning(f"Haiku slug generation failed: {e}, falling back to title")
-        fallback = re.sub(r'[\\/*?:"<>|]', "", title)
-        fallback = re.sub(r"\s+", "_", fallback.strip())
-        return fallback[:50]
-
-
 def _make_filename(item: dict, target_date: str) -> str:
-    """Generate filename: [YYMMDD]_meritco_{haiku_slug}.md"""
+    """Generate filename: YYMMDD_{Tickers}_{Title}.md"""
     yymmdd = target_date.replace("-", "")[2:]
-    slug = _haiku_slug(item)
-    return f"[{yymmdd}]_meritco_{slug}.md"
+    targets = item.get("relatedTargets") or []
+    title = item.get("title", "")
+
+    tickers_part = "_".join(targets) if targets else "NoTicker"
+    title = re.sub(r'[\\/*?:"<>|]', "", title)
+    title = re.sub(r"\s+", "_", title.strip())
+
+    name = f"{yymmdd}_{tickers_part}_{title}"
+    return name[:200] + ".md"
 
 
 def _escape_yaml(s: str) -> str:
