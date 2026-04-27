@@ -67,6 +67,7 @@ class SocialConfig:
 class AppConfig:
     hours_back: int
     filters: list[FilterGroup]
+    weekly_filters: list[FilterGroup] = field(default_factory=list)
     data_dir: Path = field(default_factory=lambda: Path("data/mail"))
     summarization: SummarizationConfig = field(default_factory=SummarizationConfig)
     monitor: MonitorConfig = field(default_factory=MonitorConfig)
@@ -133,6 +134,14 @@ def load_config(path: Path | None = None) -> AppConfig:
     if not filters:
         raise ValueError("No filters defined in config file.")
 
+    weekly_filters = []
+    for item in raw.get("weekly_filters", []) or []:
+        weekly_filters.append(FilterGroup(
+            name=item["name"],
+            senders=item.get("senders", []),
+            keywords=item.get("keywords", []),
+        ))
+
     # Parse summarization config
     sum_raw = raw.get("summarization", {})
     sum_config = SummarizationConfig(
@@ -175,9 +184,13 @@ def load_config(path: Path | None = None) -> AppConfig:
     config = AppConfig(
         hours_back=raw.get("hours_back", 24),
         filters=filters,
+        weekly_filters=weekly_filters,
         summarization=sum_config,
         monitor=monitor_config,
         social=social_config,
     )
-    logger.info(f"Loaded {len(filters)} filter groups, {len(config.all_senders)} unique senders.")
+    logger.info(
+        f"Loaded {len(filters)} daily + {len(weekly_filters)} weekly filter groups, "
+        f"{len(config.all_senders)} unique daily senders."
+    )
     return config

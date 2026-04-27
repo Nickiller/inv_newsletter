@@ -41,6 +41,57 @@ filters:
     keywords:
       - "Chips for Breakfast"
 
+# Weekly 必读邮件筛选（仅在 --weekly 模式下使用，不参与 daily monitor）
+weekly_filters:
+  - name: "Bernstein Weekly Tech Check"
+    senders:
+      - "keith.murray@bernsteinsg.com"
+    keywords:
+      - "WEEKLY TECH CHECK"
+
+  - name: "Wolfe Zukin's Next Week"
+    senders:
+      - "zukinteam@wolferesearch.com"
+    keywords:
+      - "Zukin's Next Week"
+
+  - name: "Wolfe Software Sunday"
+    senders:
+      - "azukin@wolferesearch.com"
+    keywords:
+      - "Software Weekly Sunday"
+
+  - name: "Wolfe Internet Week Ahead"
+    senders:
+      - "skhajuria@wolferesearch.com"
+    keywords:
+      - "Week Ahead"
+
+  - name: "Jefferies Tech Sunday Scoreboard"
+    senders:
+      - "jfavuzza@jefferies.com"
+    keywords:
+      - "Scoreboard"
+
+  - name: "Stratechery Weekly"
+    senders:
+      - "email@stratechery.com"
+    keywords:
+      - "This Week in Stratechery"
+
+  - name: "Funda AI Weekly"
+    senders:
+      - "fundaai@substack.com"
+    keywords:
+      - "Weekly|"
+
+  - name: "Meritco Weekly Digest"
+    senders:
+      - "forum@research.meritco-group.com"
+    keywords:
+      - "近一周"
+      - "调研周报"
+
 # 总结配置
 summarization:
   model: "anthropic/claude-opus-4.6"
