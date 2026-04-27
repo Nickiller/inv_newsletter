@@ -30,6 +30,10 @@ def main():
                         help="Comma-separated dates to fetch Meritco minutes (e.g. 2026-04-23,2026-04-24)")
     parser.add_argument("--exclude-industry", default=None,
                         help="Comma-separated industry keywords to skip (e.g. 医疗,医药,健康)")
+    parser.add_argument("--meritco-days", type=int, default=3,
+                        help="Number of past days of Meritco minutes to include in daily summary (default 3)")
+    parser.add_argument("--no-auto-meritco", action="store_true",
+                        help="Skip auto-fetching today's Meritco minutes when summarizing")
     parser.add_argument("--weekly", action="store_true",
                         help="Generate weekly digest (Mon..Sun) — fetches weekly emails + meritco, cross-checks daily")
     parser.add_argument("--week-end", default=None,
@@ -78,11 +82,17 @@ def main():
             _do_meritco(d, exclude_industries)
     elif args.meritco and not args.dry_run:
         _do_meritco(args.date, exclude_industries)
+    elif (args.summarize or args.summarize_only) and not args.dry_run and not args.no_auto_meritco:
+        # Auto-fetch today's meritco when summarizing (so the past-N-days window is fresh)
+        try:
+            _do_meritco(args.date, exclude_industries)
+        except Exception as e:
+            logger.warning(f"Auto meritco fetch failed (continuing without): {e}")
 
     # Summarize (if --summarize or --summarize-only)
     summary_path = None
     if (args.summarize or args.summarize_only) and not args.dry_run:
-        summary_path = _do_summarize(config, base_dir, args.date)
+        summary_path = _do_summarize(config, base_dir, args.date, args.meritco_days)
 
     # Publish to Lark
     if args.publish and not args.dry_run:
@@ -254,7 +264,7 @@ def _do_meritco(target_date: str | None, exclude_industries: list[str] | None = 
     print(f"\nMeritco: saved {len(saved)} minutes for {target_date}")
 
 
-def _do_summarize(config, base_dir: Path, target_date: str | None):
+def _do_summarize(config, base_dir: Path, target_date: str | None, meritco_days: int = 3):
     from inv_newsletter.meritco import MERITCO_DATA_DIR
     from inv_newsletter.summarizer import summarize_daily
 
@@ -266,6 +276,7 @@ def _do_summarize(config, base_dir: Path, target_date: str | None):
         model=sum_cfg.model,
         max_tokens=sum_cfg.max_tokens,
         meritco_dir=MERITCO_DATA_DIR if MERITCO_DATA_DIR.exists() else None,
+        meritco_days=meritco_days,
     )
 
     print(f"\nSaved to: {output_path}")
