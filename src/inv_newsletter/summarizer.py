@@ -14,6 +14,8 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
+last_usage: dict = {}  # populated by summarize_daily with {input_tokens, output_tokens, stop_reason}
+
 MIN_IMAGE_SIZE = 35 * 1024  # 35KB — skip logos/banners but keep small data charts
 MAX_IMAGES_PER_EMAIL = 5  # 每封邮件最多 5 张图（图表多的邮件如 JPM Sentiment Monitor 需要更多额度）
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
@@ -54,13 +56,24 @@ SYSTEM_PROMPT = """\
    - 保留分析师观点、投资逻辑和业务细节
    - 每个要点用 bullet point
    - 不要过度压缩信息，保持原文的信息密度
-   - 金融行业术语保留英文原文，不要翻译（如 Street / Wall Street、buy-side、sell-side、consensus、guidance、beat/miss 等）
+   - 金融行业术语保留英文原文，不要翻译（如 Street / Wall Street、buy-side、sell-side、consensus、guidance、beat/miss、read through / readthrough 等）。特别提醒：**不要**把 "read through" 翻译成"读穿"，保留英文即可
 
 4. **来源标注与链接**：
    - **原文中出现的所有链接都必须保留**，无论是主流媒体（WSJ、Bloomberg、CNBC、Reuters 等）还是社区来源（TMTB Chat、Tae Kim、Semianalysis、FundaAI、Substack 等），格式：`[来源名](完整URL)` 紧跟在相关内容后
-   - 同一条内容若有多个来源链接，全部并排列出
+   - 同一条内容若有多个来源链接，全部并排列出，**必须内联到对应内容 bullet 的末尾**
+   - **严禁**单独起一个 bullet 只列链接（例如 `- [CNBC](...) [WSJ](...)` 这种是错的）；链接永远和具体内容在同一行
    - **如果已有具体链接，不需要再附加 `*来源：XXX (MM/DD)*`**；只有在没有任何具体链接时，才在末尾加 `*来源：{邮件标题简称} ({日期})*`
-   - 示例（有链接）：`OpenAI 完成融资 [Tae Kim](https://x.com/...) [The Information](https://theinformation.com/...)`
+   - 示例（正确 ✅）：
+     ```
+     - DeepSeek 发布 V4 预览版，外媒普遍视为中国 AI 竞争升温的标志 [CNBC](https://...) [WSJ](https://...)
+     - 加剧模型层竞争和价格压力，企业采购更愿意保留多模型选项
+     ```
+   - 示例（错误 ❌，禁止）：
+     ```
+     - DeepSeek 发布 V4 预览版
+     - 加剧模型层竞争和价格压力
+     - [CNBC](https://...) [WSJ](https://...)      ← 禁止：链接不能独立成 bullet
+     ```
    - 示例（无链接）：`分析师认为软件名义将滞后 *来源：Jefferies (04/01)*`
    - **久谦论坛纪要**：每条纪要都附带 `source_url`（meritco-group.com 链接）和 `date`，归类到对应 Ticker 下时**必须**引用 source_url，格式：`[久谦纪要 — {专家简称}](source_url)` 紧跟在相关内容后；同时在末尾标注 `*({MM/DD})*` 标明纪要日期。纪要为专家 Q&A 格式，提取关键数据点和结论即可，不需要保留问答原文。示例：`Agent 试点占比 45% [久谦 — Cognizant 离职专家](https://research.meritco-group.com/forum?forumType=2&forumId=3114) *(04/23)*`
 
@@ -80,6 +93,13 @@ SYSTEM_PROMPT = """\
      ```
 
 6. **催化剂日历**：在文末汇总"本周关注"事件（财报、会议、数据发布等，如有）。
+
+7. **AI Builders Digest 特殊处理**：如果某封"邮件"的发件人是 `follow-builders`（subject 形如 "AI Builders Digest — ..."），它不是投研邮件，而是 AI builders（创始人/研究员/PM）在 X 和播客上的发言汇总：
+   - 归入"AI 模型与平台"板块，作为该板块的独立子主题（用 `### AI Builders 动态` 作为小标题，排在该板块其他 Ticker 之前或之后均可）
+   - **不要求** Ticker 归类；按人物/话题组织即可（如 `**Aaron Levie (Box CEO)**: ...`）
+   - 保留原文中所有 x.com / 播客 URL，格式 `[来源](完整URL)`
+   - 不要和投研邮件里对同一公司的财务分析强行合并；两者视角不同，各自成段
+   - 如果 builders 提到的话题和邮件里的某 Ticker 强相关（如都在讨论 NVDA 新品），可以在该 Ticker 条目下加一条"builders 视角："引用，但不要替代
 
 ## 输出格式
 
@@ -109,6 +129,7 @@ def summarize_daily(
     max_tokens: int = 16000,
     meritco_dir: Path | None = None,
     meritco_days: int = 3,
+    filename_suffix: str = "",
 ) -> Path:
     """Load emails for a date, call Claude API, write digest. Returns output path."""
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -179,6 +200,8 @@ def summarize_daily(
     tokens_out = final.usage.output_tokens
     stop_reason = final.stop_reason
     logger.info(f"API response: {tokens_in} input tokens, {tokens_out} output tokens, stop_reason: {stop_reason}")
+    last_usage.clear()
+    last_usage.update({"input_tokens": tokens_in, "output_tokens": tokens_out, "stop_reason": stop_reason})
 
     # Detect truncation
     if stop_reason == "max_tokens":
@@ -196,7 +219,7 @@ def summarize_daily(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     img_dir = output_dir / target_date
-    output_path = output_dir / f"{target_date}_daily_digest.md"
+    output_path = output_dir / f"{target_date}_daily_digest{filename_suffix}.md"
 
     # Deterministic post-processing: drop reused/mismatched/out-of-range image refs
     digest = _validate_image_refs(digest, img_caption)
