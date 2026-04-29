@@ -206,7 +206,34 @@ def summarize_daily(
 
     output_path.write_text(digest, encoding="utf-8")
     logger.info(f"Digest written to {output_path}")
+
+    _print_sources(emails, meritco_entries)
     return output_path
+
+
+def _print_sources(emails: list[dict], meritco_entries: list[dict]) -> None:
+    """Print the emails + meritco minutes that fed this digest."""
+    print(f"\n{'='*70}")
+    print(f"📥 本次引用：{len(emails)} 封邮件 + {len(meritco_entries)} 条久谦纪要")
+    print('='*70)
+    if emails:
+        print(f"\n📧 邮件 ({len(emails)})：")
+        for i, email in enumerate(emails, 1):
+            fm = email["frontmatter"]
+            sender = fm.get("sender_name", "?")
+            subject = fm.get("subject", "?")
+            received = fm.get("received_at", "")
+            time_str = received[:16].replace("T", " ") if received else ""
+            print(f"  {i:2d}. [{time_str}] {sender} — {subject}")
+    if meritco_entries:
+        print(f"\n📝 久谦纪要 ({len(meritco_entries)})：")
+        for i, m in enumerate(meritco_entries, 1):
+            fm = m["frontmatter"]
+            title = fm.get("subject", "?")
+            tickers = fm.get("tickers", []) or []
+            tickers_str = ",".join(tickers) if tickers else "—"
+            print(f"  {i:2d}. [{m.get('date','')}] {tickers_str} — {title}")
+    print('='*70)
 
 
 def _tokenize_caption(text: str) -> set[str]:

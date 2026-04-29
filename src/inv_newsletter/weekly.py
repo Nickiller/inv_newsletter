@@ -378,4 +378,38 @@ def summarize_weekly(
     out_path = output_dir / f"{week_end.isoformat()}_weekly_digest.md"
     out_path.write_text(digest, encoding="utf-8")
     logger.info(f"Weekly digest written to {out_path}")
+
+    _print_weekly_sources(weekly_emails, meritco, daily_digests)
     return out_path
+
+
+def _print_weekly_sources(
+    weekly_emails: list[dict], meritco: list[dict], daily_digests: list[dict]
+) -> None:
+    """Print the weekly inputs that fed this digest."""
+    print(f"\n{'='*70}")
+    print(
+        f"📥 本次引用：{len(weekly_emails)} 封周报邮件 + "
+        f"{len(meritco)} 条久谦纪要 + {len(daily_digests)} 份每日摘要"
+    )
+    print('='*70)
+    if weekly_emails:
+        print(f"\n📧 周报邮件 ({len(weekly_emails)})：")
+        for i, email in enumerate(weekly_emails, 1):
+            fm = email["frontmatter"]
+            sender = fm.get("sender_name", "?")
+            subject = fm.get("subject", "?")
+            print(f"  {i:2d}. [{email.get('date','')}] {sender} — {subject}")
+    if meritco:
+        print(f"\n📝 久谦纪要 ({len(meritco)})：")
+        for i, m in enumerate(meritco, 1):
+            fm = m["frontmatter"]
+            title = fm.get("subject", "?")
+            tickers = fm.get("tickers", []) or []
+            tickers_str = ",".join(tickers) if tickers else "—"
+            print(f"  {i:2d}. [{m.get('date','')}] {tickers_str} — {title}")
+    if daily_digests:
+        print(f"\n📰 每日摘要 ({len(daily_digests)})：")
+        for d in daily_digests:
+            print(f"  - {d.get('date','')}")
+    print('='*70)

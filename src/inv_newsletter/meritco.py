@@ -332,6 +332,27 @@ def _escape_yaml(s: str) -> str:
     return s.replace("\\", "\\\\").replace('"', '\\"')
 
 
+def _existing_item_ids(date_dir: Path) -> set[int]:
+    """Scan a date dir and return the set of meritco item_ids already saved.
+
+    Reads each .md's YAML frontmatter and extracts the integer from `id: meritco-<N>`.
+    Used for deduplication — filenames include a non-deterministic Haiku-generated
+    topic so we cannot dedup by filename equality.
+    """
+    ids: set[int] = set()
+    if not date_dir.exists():
+        return ids
+    for md in date_dir.glob("*.md"):
+        try:
+            head = md.read_text(encoding="utf-8")[:512]
+            m = re.search(r'id:\s*"?meritco-(\d+)"?', head)
+            if m:
+                ids.add(int(m.group(1)))
+        except Exception as e:
+            logger.warning(f"Failed to read {md} for id dedup: {e}")
+    return ids
+
+
 def _save_minute(item: dict, content_html: str, base_dir: Path, target_date: str) -> Path:
     date_dir = base_dir / target_date
     date_dir.mkdir(parents=True, exist_ok=True)
@@ -431,12 +452,12 @@ def fetch_meritco_minutes(
         ]
         logger.info(f"Meritco: excluded {before - len(minutes)} items by industry filter")
 
+    existing_ids = _existing_item_ids(base_dir / target_date)
+
     for item in minutes:
         item_id = item.get("id")
-        filename = _make_filename(item, target_date)
-        out_path = base_dir / target_date / filename
-        if out_path.exists():
-            logger.info(f"Meritco: skipping [{item_id}] (already exists)")
+        if item_id in existing_ids:
+            logger.info(f"Meritco: skipping [{item_id}] (id already in dir)")
             continue
 
         try:
