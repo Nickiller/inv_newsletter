@@ -37,7 +37,7 @@ filters:
 
   - name: "JPM Semis"
     senders:
-      - "joshua.meyers@jpmorgan.com"
+      - "shuang@etnalabs.co"
     keywords:
       - "Chips for Breakfast"
 
@@ -94,7 +94,7 @@ weekly_filters:
 
 # 总结配置
 summarization:
-  model: "anthropic/claude-opus-4.6"
+  model: "claude-opus-4-7"
   max_tokens: 32000
   output_dir: "./output/daily"
   lark_folder_token: "VnpGfdTuylfRcJdFmGkct1Q1nqg"  # 飞书目标文件夹
