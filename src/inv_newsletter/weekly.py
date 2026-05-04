@@ -92,17 +92,25 @@ WEEKLY_SYSTEM_PROMPT = """\
   避免空架子；甚至可只用一行总结。
 
 ### Section 2. 本周已报 Earnings 回看（thesis 印证 / 证伪 / 翻车）
-- 列出本周已经发布财报的标的（重点是 Mega Cap：MSFT / GOOGL / META / AMZN / AAPL / NVDA / NFLX / SPOT 等）
+- **按板块分组**，每组用 `#### {板块名}` 作为小标题。固定顺序：
+  1. **AI 模型与平台 / Mega Cap Cloud**（MSFT / GOOGL / AMZN / META / AAPL / NVDA）
+  2. **半导体与硬件**（KLAC / AMAT / LRCX / NXPI / TER / QCOM / SNDK 等）
+  3. **互联网与广告**（RDDT / ROKU / SPOT / BKNG / EBAY / ETSY 等）
+  4. **软件与 SaaS**（CRWD / DDOG / NOW / TEAM / TWLO / VRNS / CHKP 等）
+  5. **金融科技 / 支付 / Crypto**（V / MA / HOOD / COIN 等）
+  6. **其他**（TMUS / DT / CVNA / TKO / DIS 等）
+- **板块内 ticker 排序**：Mega Cap 优先 → 当周市值/影响最大者优先 → 然后按 T+1 反应剧烈程度（爆雷/大超预期排前）
 - 每个 ticker 一条紧凑 bullet，结构：
   ```
   **TICKER**：财报关键数 vs 预期 → 印证/证伪了哪条 thesis → T+1 反应 → 后续含义
   ```
 - 例：
   ```
-  **GOOGL**：GCP +63% (vs 买方 +50%)，Cloud backlog $462B (~翻倍) → 印证了 04/27 久谦专家 "GCP 加速 +10pp/季" 的判断 →
-  T+1 +6%，PT 上调至 $460 → 2027 Capex 买方共识抬至 $275B
+  #### AI 模型与平台 / Mega Cap Cloud
+  **GOOGL**：GCP +63% (vs 买方 +50%)，Cloud backlog $462B (~翻倍) → 印证 04/27 久谦"GCP 加速 +10pp/季" → T+1 +6%，PT $460 → 2027 Capex 买方共识抬至 $275B
+  **AMZN**：AWS +28.4% miss 买方 ~30%，但 backlog $364B + Trn3 sold out → 印证 AWS 加速拐点 → T+1 +2.8%，PT $280→$330
   ```
-- 无 thesis 印证/证伪含义的常规 in-line 报告可一行带过；爆雷 / 大超预期重点展开
+- **轻量化**：无 thesis 印证/证伪含义的常规 in-line 报告（如二线标的 in-line 数字）可一行带过；爆雷 / 大超预期 / 与久谦预测有冲突的重点展开
 - 数据来源以本周的 daily digest + 卖方 EPS recap 邮件为主
 
 ### Section 3. 本周板块表现 & 关键价格信号
@@ -118,26 +126,57 @@ WEEKLY_SYSTEM_PROMPT = """\
 - 按发件源（Bernstein Weekly Tech Check / Wolfe Zukin / Wolfe Internet / Jefferies Scoreboard / Stratechery / Funda AI）分小段
 - 每段 3-6 条最关键观点，引用具体数据
 - 保留邮件原文里的所有外链 `[来源名](URL)` —— 见全局规则 #2，违反将被视为输出错误
+- **本节严禁包含任何 meritco-group.com 来源的内容**（包括标题为"久谦论坛 / Meritco / 近一周纪要精选 / 调研周度更新"的邮件）。
+  久谦相关全部归到 Section 5 单独呈现；不要在卖方综合里引用久谦数据点或贴久谦链接。
 
-### Section 5. 久谦专家本周观察（按 Ticker 归类）
-- 用 `### TICKER (公司名)` 作为小标题；同一 ticker 多次出现要合并
-- **来源链接放在 ticker 标题正下方一行内集中列出**，格式：
-  `**久谦来源**：[MM/DD 专家简称](source_url) · [MM/DD 专家简称](source_url)`
-  **不要**用 `*...*` 斜体包裹整行（飞书渲染会吞掉斜体内的链接）。
-  专家简称从 `expert` 字段提取关键 4-8 字（如 "MRVL 离职专家"、"Cognizant 离职专家"、"Nebius 专家"）
-- 同一 ticker 引用同一篇纪要多次时，链接只在顶部出现一次，不要在 bullets 内重复
-- 正文 bullets **不再附链接**，只在末尾用 `(MM/DD)` 标日期，跨多篇时写 `(04/20·04/21)`
-- 提取关键数据点（具体数字、百分比、市场份额、产能、价格等），不需要保留 Q&A 原文
-- 跳过医疗/医药/健康行业
+### Section 5. 久谦专家本周观察
+- **优先级与时效性**：单篇专家 note > 多 ticker 周调研 / 周报精选。理由：单篇专家访谈是新鲜一手观点，
+  时效性最高；多 ticker 综合调研是同一团队对当周已知信号的二次整理，价值更低。
+- **结构（两级）**：
+  ```
+  ### A. 单篇专家 note（按时间倒序，最近的优先）
 
-示例格式：
+  #### {专家简称} ({MM/DD}, 涉及 ticker: TICKER1 / TICKER2)
+  **来源**：[久谦原文]({source_url})
+  - 数据点 1...
+  - 数据点 2...
+  ...
+
+  ### B. 多 ticker 周调研 / 周报精选
+
+  #### {标题简称} ({MM/DD}, 覆盖 TICKER1 / TICKER2 / ...)
+  **来源**：[久谦原文]({source_url})
+
+  ##### TICKER1 (公司名)
+  - 数据点...
+  ##### TICKER2 ...
+  ```
+- **专家简称**：从 `expert` 字段提取关键 4-8 字（如 "欧陆通离职专家"、"Cognizant 离职专家"、"Nebius 专家"、"MRVL 离职专家"）
+- **跳过医疗/医药/健康行业**
+- **链接放标题下一行**：`**来源**：[久谦原文](source_url)`，不要用 `*...*` 斜体包裹整行（飞书渲染会吞掉斜体内的链接）
+- **正文 bullets 不再附链接**，只在末尾用 `(MM/DD)` 标日期；跨多篇时写 `(04/20·04/21)`
+- **提取要点**：保留具体数字（市场份额、产能、价格、增速、毛利率、人头/订单数等），不要保留 Q&A 原文
+- **同一 ticker 跨多篇出现**：在多 ticker 周调研段落里正常按 ticker 拆分；不需要再单独建顶层 ticker 段（避免重复）
+
+示例：
 ```
-### MRVL (Marvell Technology)
-**久谦来源**：[04/20 通信硬件专家](url) · [04/21 MRVL 离职专家](url)
+### A. 单篇专家 note
 
-- Google ASIC 合作确认：... 三年意向订单 $150-200 亿。(04/20)
-- 收入展望：2026 年 $20-30 亿，2027 年 $60-70 亿... (04/21)
-- CXL 池化推进超预期：... (04/20·04/21)
+#### 欧陆通离职专家 (04/28, 涉及 GOOGL / 欧陆通 / 麦格米特 / 英飞凌)
+**来源**：[久谦原文](https://research.meritco-group.com/forum?forumType=2&forumId=3127)
+- Google v8 已 4 月发布，整柜 ~100kW，单芯片 850-950W... (04/28)
+- v7 PSU 5.5kW，v8 升级到 8kW，毛利率 26%→30%... (04/28)
+...
+
+### B. 多 ticker 周调研 / 周报精选
+
+#### 4.27 北美调研周度更新 (04/27, 覆盖 AMZN / GOOGL / META / MSFT / MRVL / ALAB / NOK)
+**来源**：[久谦原文](https://research.meritco-group.com/forum?forumType=2&forumId=3126)
+
+##### AMZN / AWS
+- AWS Q1 增速 29-30%... (04/27)
+##### GOOGL
+- GCP Q1 ~61%，年底接近 90%... (04/27)
 ```
 
 ### Section 6. 下周关注（Catalysts Calendar）
@@ -159,7 +198,13 @@ WEEKLY_SYSTEM_PROMPT = """\
 ---
 
 ## 2. 本周已报 Earnings 回看
+#### AI 模型与平台 / Mega Cap Cloud
 - **TICKER**：实际数 vs 预期 → 印证/证伪 thesis → T+1 反应 → 含义
+#### 半导体与硬件
+- **TICKER**：...
+#### 互联网与广告
+- **TICKER**：...
+（其余板块同结构）
 
 ---
 
@@ -169,14 +214,22 @@ WEEKLY_SYSTEM_PROMPT = """\
 ---
 
 ## 4. 卖方周报观点综合
+> 本节不含任何久谦内容
 ### Bernstein Weekly Tech Check ({date})
 - ...（保留所有 URL）
 
 ---
 
-## 5. 久谦专家本周观察（按 Ticker）
-### NVDA (英伟达)
-**久谦来源**：[MM/DD 专家简称](source_url)
+## 5. 久谦专家本周观察
+### A. 单篇专家 note（时间倒序）
+#### {专家简称} ({MM/DD}, 涉及 TICKER...)
+**来源**：[久谦原文](source_url)
+- ...
+
+### B. 多 ticker 周调研 / 周报精选
+#### {标题} ({MM/DD}, 覆盖 TICKER1 / TICKER2 / ...)
+**来源**：[久谦原文](source_url)
+##### TICKER1
 - ...
 
 ---
