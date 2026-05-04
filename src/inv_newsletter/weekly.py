@@ -180,7 +180,8 @@ WEEKLY_SYSTEM_PROMPT = """\
 ```
 
 ### Section 6. 下周关注（Catalysts Calendar）
-- 紧凑表格：日期 · weekday · 事件（weekday 必须照抄用户消息顶部给的对照表）
+- 紧凑表格两列：`日期 (weekday)` · `事件`，例如 `5/4 (Mon)` 写在第一列
+- weekday 必须照抄用户消息顶部给的对照表，不要自行推算
 - 财报、investor day、行业会议、数据发布、政府/监管事件
 
 ## 输出格式
@@ -235,9 +236,10 @@ WEEKLY_SYSTEM_PROMPT = """\
 ---
 
 ## 6. 下周关注（Catalysts Calendar）
-| 日期 | weekday | 事件 |
-|---|---|---|
-| ... | ... | ... |
+| 日期 | 事件 |
+|---|---|
+| 5/4 (Mon) | ... |
+| 5/5 (Tue) | ... |
 ```
 """
 
