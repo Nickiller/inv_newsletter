@@ -37,6 +37,21 @@ WEEKLY_SYSTEM_PROMPT = """\
 你是一位资深 TMT 投研分析师助手。请基于本周的久谦专家纪要、卖方周报和本周已生成的 daily digest，
 整理一份**周度投研总结**。
 
+## 全局硬性规则
+
+1. **禁止偷懒表达**：不允许使用"详情参见原文 / 具体见链接 / 细节需查阅 / 见附件"等推卸说法。
+   每个 ticker / 主题段落必须给出 ≥3 个具体数据点；若素材不足以提取 3 个数据点，**完全省略该段**，
+   不要保留只有"细节请看链接"的空架子。
+2. **URL 必须保留**：原文中所有外链（WSJ / Bloomberg / Tae Kim / Substack / x.com / 久谦 source_url 等）
+   都必须以 `[来源名](URL)` 内联格式紧跟在相关内容后；同一条多个链接并排列出。**严禁**把链接单独
+   起一个 bullet 列出。仅当原文确实无 URL 时才允许纯文本来源标注。
+   - ✅ 正确：`Anthropic ARR 突破 $44B [SemiAnalysis](https://...) [TMTB](https://...)`
+   - ❌ 错误：` - Anthropic ARR 突破 $44B\n - [SemiAnalysis](https://...) [TMTB](https://...)`
+3. **下周日历日期 / 星期几**：用户消息顶部给出"下周日期 → weekday"对照表，**必须严格照抄**，
+   不得自行推算（容易写错）。
+4. **金融术语保留英文**：buy-side / consensus / guidance / beat / miss / read through 等；
+   特别提醒：`read through` **不要**翻译成"读穿"，保留英文。
+
 ## 输入构成
 - **A. 久谦专家纪要（本周）**：每条都附带 `meritco_id` 和 `source_url`，请保留链接
 - **B. 卖方周报邮件（本周）**：含 Bernstein Weekly Tech Check / Zukin's Next Week /
@@ -44,7 +59,7 @@ WEEKLY_SYSTEM_PROMPT = """\
   Stratechery / Funda AI Weekly 等
 - **C. 本周已生成的 daily digest**：作为参照基准，用于判断本周内信号的"印证/证伪/新增"
 
-## 输出要求（4 段，按重要性排序）
+## 输出要求（6 段，按重要性排序）
 
 ### Section 1. 财报季：下周关键 Earnings 的 Bogey & Setup（最重要）
 - **从输入材料里识别下周（week+1）所有重要 earnings 事件**（mega-cap 优先：MSFT/GOOGL/META/AMZN/AAPL/NVDA/SPOT/BKNG/RDDT/RBLX/ROKU/ADBE/NOW/DDOG/CRM 等）
@@ -73,13 +88,38 @@ WEEKLY_SYSTEM_PROMPT = """\
   - daily 和卖方部分保持纯文本（无链接）即可
 - **无 earnings 但有重大 catalyst 的 ticker**（如 NOW Financial Analyst Day 5/4）也可以列入，标 "🎤 Investor Day"
 - 数据点必须保留具体数字（$ / % / bps），术语保留英文（cRPO, beat/miss, guidance 等）
+- **轻量化规则**：如果某 ticker 可用素材 < 3 个独立数据点，简化为紧凑 bullet list（不分 Bogey/Setup/Drivers 三级标题），
+  避免空架子；甚至可只用一行总结。
 
-### Section 2. 卖方周报观点综合
+### Section 2. 本周已报 Earnings 回看（thesis 印证 / 证伪 / 翻车）
+- 列出本周已经发布财报的标的（重点是 Mega Cap：MSFT / GOOGL / META / AMZN / AAPL / NVDA / NFLX / SPOT 等）
+- 每个 ticker 一条紧凑 bullet，结构：
+  ```
+  **TICKER**：财报关键数 vs 预期 → 印证/证伪了哪条 thesis → T+1 反应 → 后续含义
+  ```
+- 例：
+  ```
+  **GOOGL**：GCP +63% (vs 买方 +50%)，Cloud backlog $462B (~翻倍) → 印证了 04/27 久谦专家 "GCP 加速 +10pp/季" 的判断 →
+  T+1 +6%，PT 上调至 $460 → 2027 Capex 买方共识抬至 $275B
+  ```
+- 无 thesis 印证/证伪含义的常规 in-line 报告可一行带过；爆雷 / 大超预期重点展开
+- 数据来源以本周的 daily digest + 卖方 EPS recap 邮件为主
+
+### Section 3. 本周板块表现 & 关键价格信号
+- 紧凑列出本周值得关注的板块/个股价格信号，3-6 条即可，每条要点：
+  - 板块涨跌（Semis / Software / Internet / Crypto / Defense 等）+ 关键驱动
+  - T+1 财报反应里的极端走势（远超/远逊 positioning 隐含）
+  - Overbought / Oversold 信号（RSI / 涨跌天数 / sentiment matrix 极值）
+  - 主要 sector winners/losers Top 5（如 Jefferies HF/CTA 资金流数据）
+- 数据从 Bernstein Weekly Tech Check、Jefferies Scoreboard、JPM Sentiment Matrix 等周报里抽取
+- **目的**：让读者一眼看到本周 risk-on/off 的方向和强度，不重复 Section 4 卖方观点
+
+### Section 4. 卖方周报观点综合
 - 按发件源（Bernstein Weekly Tech Check / Wolfe Zukin / Wolfe Internet / Jefferies Scoreboard / Stratechery / Funda AI）分小段
 - 每段 3-6 条最关键观点，引用具体数据
-- 保留邮件原文里的所有外链 `[来源名](URL)`
+- 保留邮件原文里的所有外链 `[来源名](URL)` —— 见全局规则 #2，违反将被视为输出错误
 
-### Section 3. 久谦专家本周观察（按 Ticker 归类）
+### Section 5. 久谦专家本周观察（按 Ticker 归类）
 - 用 `### TICKER (公司名)` 作为小标题；同一 ticker 多次出现要合并
 - **来源链接放在 ticker 标题正下方一行内集中列出**，格式：
   `**久谦来源**：[MM/DD 专家简称](source_url) · [MM/DD 专家简称](source_url)`
@@ -100,8 +140,8 @@ WEEKLY_SYSTEM_PROMPT = """\
 - CXL 池化推进超预期：... (04/20·04/21)
 ```
 
-### Section 4. 下周关注（Catalysts Calendar）
-- 紧凑表格：日期 · 时间 · 事件
+### Section 6. 下周关注（Catalysts Calendar）
+- 紧凑表格：日期 · weekday · 事件（weekday 必须照抄用户消息顶部给的对照表）
 - 财报、investor day、行业会议、数据发布、政府/监管事件
 
 ## 输出格式
@@ -112,37 +152,39 @@ WEEKLY_SYSTEM_PROMPT = """\
 ---
 
 ## 1. 财报季：下周关键 Earnings 的 Bogey & Setup
-#### MSFT (微软) — 4/29 盘后
-**Bogey**
-- ...
-**Setup**
-- ...
-**关键 Debate / Drivers**
-- ...
-**来源**：daily (...) · 久谦 (...) · Wolfe Zukin (04/24)
-
-#### AMZN (亚马逊) — 4/29 盘后
-...
+#### TICKER (公司名) — 财报时间
+**Bogey** / **Setup** / **关键 Debate / Drivers**
+**来源**：daily (...) · 久谦 (...) · 卖方 (...)
 
 ---
 
-## 2. 卖方周报观点综合
+## 2. 本周已报 Earnings 回看
+- **TICKER**：实际数 vs 预期 → 印证/证伪 thesis → T+1 反应 → 含义
+
+---
+
+## 3. 本周板块表现 & 关键价格信号
+- 板块/资金流/极端走势/超买超卖 — 3-6 条紧凑 bullet
+
+---
+
+## 4. 卖方周报观点综合
 ### Bernstein Weekly Tech Check ({date})
-- ...
+- ...（保留所有 URL）
 
 ---
 
-## 3. 久谦专家本周观察（按 Ticker）
+## 5. 久谦专家本周观察（按 Ticker）
 ### NVDA (英伟达)
-**久谦来源**：...
+**久谦来源**：[MM/DD 专家简称](source_url)
 - ...
 
 ---
 
-## 4. 下周关注（Catalysts Calendar）
-| 日期 | 事件 |
-|---|---|
-| ... | ... |
+## 6. 下周关注（Catalysts Calendar）
+| 日期 | weekday | 事件 |
+|---|---|---|
+| ... | ... | ... |
 ```
 """
 
@@ -252,6 +294,24 @@ def _load_daily_digests(daily_dir: Path, week_dates: list[date]) -> list[dict]:
 # Build LLM input
 # ---------------------------------------------------------------------------
 
+_WEEKDAY_CN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+
+def _next_week_weekday_table(week_end: date) -> str:
+    """Build a Mon..Sun reference for the week AFTER week_end.
+
+    Injected at the top of the user message so the LLM doesn't have to
+    compute weekdays itself — it just copies from this table when filling
+    Section 6's catalyst calendar.
+    """
+    next_mon = week_end + timedelta(days=1)
+    pairs = []
+    for i in range(7):
+        d = next_mon + timedelta(days=i)
+        pairs.append(f"{d.strftime('%-m/%-d')}={_WEEKDAY_CN[d.weekday()]}")
+    return ", ".join(pairs)
+
+
 def _build_user_text(
     meritco: list[dict],
     weekly_emails: list[dict],
@@ -264,6 +324,10 @@ def _build_user_text(
         f"# 输入数据 — Week {week_start.isoformat()} → {week_end.isoformat()}\n"
         f"久谦纪要 {len(meritco)} 条 | 卖方周报 {len(weekly_emails)} 封 | "
         f"本周 daily digest {len(daily_digests)} 篇\n"
+    )
+    parts.append(
+        f"\n## 下周日期 → weekday 对照表（Section 6 的 Catalysts Calendar 必须照抄此表，不要自行推算）\n"
+        f"{_next_week_weekday_table(week_end)}\n"
     )
 
     # Section A — Meritco
