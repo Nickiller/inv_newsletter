@@ -235,7 +235,10 @@ def _fetch_minutes_list(token: str, page: int = 1, page_size: int = 50) -> list[
     resp = _post_signed(f"{API_BASE}/forum/select/list", token, body, sign_input)
     if resp.get("code") != 200:
         raise RuntimeError(f"Meritco list API error: {resp.get('message')}")
-    return resp.get("result", {}).get("forumList", [])
+    # API returns forumList: null (not []) for empty result sets — dict.get's default
+    # only fires on missing keys, so coerce explicitly.
+    result = resp.get("result") or {}
+    return result.get("forumList") or []
 
 
 def _fetch_minute_detail(token: str, forum_id: int) -> str | None:
