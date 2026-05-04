@@ -179,10 +179,24 @@ def _common_headers(token: str) -> dict:
     }
 
 
-def _post_signed(url: str, token: str, body: dict, sign_input: str) -> dict:
-    """POST a signed request. Raises on non-200 or auth failure."""
+def _post_signed(
+    url: str,
+    token: str,
+    body: dict,
+    my_sign_input: str,
+    forum_sign_input: str,
+) -> dict:
+    """POST a signed request. Raises on non-200 or auth failure.
+
+    The server requires three auth artifacts (added 2026-04 update):
+      - `token` header (raw token)
+      - `x-my-header` (RSA(my_sign_input))
+      - `x-forum-header` (RSA(forum_sign_input)) — typically the same fields
+        as my_sign_input but with " " or "   " spacer between them
+    """
     headers = _common_headers(token)
-    headers["x-my-header"] = _sign(sign_input)
+    headers["x-my-header"] = _sign(my_sign_input)
+    headers["x-forum-header"] = _sign(forum_sign_input)
     r = requests.post(
         url,
         headers=headers,
@@ -230,9 +244,15 @@ def _fetch_minutes_list(token: str, page: int = 1, page_size: int = 50) -> list[
         "sort": 2,
         "platform": "RESEARCH_PC",
     }
+    # Sign formula matches frontend bundle (app.f23852da.js):
+    #   X-My-Header     = RSA(token + keyword + page)
+    #   X-Forum-Header  = RSA(token + keyword + "   " + page)   ← 3-space spacer
     keyword = body["keyword"]
-    sign_input = token + str(keyword) + str(page)
-    resp = _post_signed(f"{API_BASE}/forum/select/list", token, body, sign_input)
+    my_input = token + str(keyword) + str(page)
+    forum_input = token + str(keyword) + "   " + str(page)
+    resp = _post_signed(
+        f"{API_BASE}/forum/select/list", token, body, my_input, forum_input
+    )
     if resp.get("code") != 200:
         raise RuntimeError(f"Meritco list API error: {resp.get('message')}")
     # API returns forumList: null (not []) for empty result sets — dict.get's default
@@ -242,11 +262,17 @@ def _fetch_minutes_list(token: str, page: int = 1, page_size: int = 50) -> list[
 
 
 def _fetch_minute_detail(token: str, forum_id: int) -> str | None:
-    """POST /forum/select/id?forumId=X — sign input is token + forumId."""
+    """POST /forum/select/id?forumId=X.
+
+    Sign formula (detail endpoints, from frontend bundle):
+      X-My-Header    = RSA(token + str(forumId))
+      X-Forum-Header = RSA(token + "  " + str(forumId))   ← 2-space spacer
+    """
     body = {"platform": "RESEARCH_PC"}
-    sign_input = token + str(forum_id)
+    my_input = token + str(forum_id)
+    forum_input = token + "  " + str(forum_id)
     url = f"{API_BASE}/forum/select/id?forumId={forum_id}"
-    resp = _post_signed(url, token, body, sign_input)
+    resp = _post_signed(url, token, body, my_input, forum_input)
     if resp.get("code") != 200:
         logger.warning(f"Meritco detail API error for {forum_id}: {resp.get('message')}")
         return None
