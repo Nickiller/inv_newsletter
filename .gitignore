@@ -28,3 +28,7 @@ logs/
 # IDE
 .vscode/
 .idea/
+
+# Claude Code (local, per-machine)
+.claude/settings.local.json
+.claude/*.lock
