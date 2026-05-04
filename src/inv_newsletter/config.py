@@ -14,6 +14,7 @@ class FilterGroup:
     name: str
     senders: list[str]
     keywords: list[str] = field(default_factory=list)
+    exclude_keywords: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -96,6 +97,17 @@ class AppConfig:
         return result
 
     @property
+    def all_exclude_keywords(self) -> list[str]:
+        seen = set()
+        result = []
+        for fg in self.filters:
+            for k in fg.exclude_keywords:
+                if k not in seen:
+                    seen.add(k)
+                    result.append(k)
+        return result
+
+    @property
     def all_source_groups(self) -> list[FilterGroup]:
         """All filter groups including virtual ones for social accounts."""
         groups = list(self.filters)
@@ -129,6 +141,7 @@ def load_config(path: Path | None = None) -> AppConfig:
             name=item["name"],
             senders=item.get("senders", []),
             keywords=item.get("keywords", []),
+            exclude_keywords=item.get("exclude_keywords", []),
         ))
 
     if not filters:
@@ -140,6 +153,7 @@ def load_config(path: Path | None = None) -> AppConfig:
             name=item["name"],
             senders=item.get("senders", []),
             keywords=item.get("keywords", []),
+            exclude_keywords=item.get("exclude_keywords", []),
         ))
 
     # Parse summarization config

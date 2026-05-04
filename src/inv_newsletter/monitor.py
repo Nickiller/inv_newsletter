@@ -185,6 +185,7 @@ def _do_fetch_safe(config: AppConfig, base_dir: Path) -> int:
         emails = client.fetch_emails(
             senders=config.all_senders,
             keywords=config.all_keywords or None,
+            exclude_keywords=config.all_exclude_keywords or None,
             hours_back=config.hours_back,
         )
 

@@ -124,11 +124,13 @@ def _do_fetch(config, base_dir: Path, dry_run: bool):
 
     senders = config.all_senders
     keywords = config.all_keywords or None
+    exclude_keywords = config.all_exclude_keywords or None
     logger.info(f"Fetching emails: {len(senders)} senders, {len(keywords or [])} keywords, last {config.hours_back}h")
 
     emails = client.fetch_emails(
         senders=senders,
         keywords=keywords,
+        exclude_keywords=exclude_keywords,
         hours_back=config.hours_back,
     )
     logger.info(f"Found {len(emails)} matching emails.")
@@ -191,11 +193,14 @@ def _do_weekly(config, base_dir: Path, week_end_str: str | None):
     # Step 1: fetch weekly emails
     weekly_senders = []
     weekly_keywords = []
+    weekly_exclude = []
     for fg in config.weekly_filters:
         weekly_senders.extend(fg.senders)
         weekly_keywords.extend(fg.keywords)
+        weekly_exclude.extend(fg.exclude_keywords)
     weekly_senders = list(set(weekly_senders))
     weekly_keywords = list(set(weekly_keywords)) or None
+    weekly_exclude = list(set(weekly_exclude)) or None
 
     base_dir.mkdir(parents=True, exist_ok=True)
     browser = OutlookBrowser()
@@ -208,7 +213,11 @@ def _do_weekly(config, base_dir: Path, week_end_str: str | None):
     logger.info(f"Fetching weekly emails: {len(weekly_senders)} senders, last {hours_back}h")
 
     emails = client.fetch_emails(
-        senders=weekly_senders, keywords=weekly_keywords, hours_back=hours_back, top=200
+        senders=weekly_senders,
+        keywords=weekly_keywords,
+        exclude_keywords=weekly_exclude,
+        hours_back=hours_back,
+        top=200,
     )
     logger.info(f"Found {len(emails)} matching weekly emails")
     saved = skipped = errors = 0

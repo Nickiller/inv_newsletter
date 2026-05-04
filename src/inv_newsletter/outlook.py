@@ -44,6 +44,7 @@ class OutlookClient:
         self,
         senders: list[str] | None = None,
         keywords: list[str] | None = None,
+        exclude_keywords: list[str] | None = None,
         hours_back: int = 24,
         top: int = 50,
     ) -> list[Email]:
@@ -94,6 +95,17 @@ class OutlookClient:
                 e for e in all_emails
                 if any(k in e.subject.lower() for k in kw_lower)
             ]
+
+        if exclude_keywords:
+            ex_lower = [k.lower() for k in exclude_keywords]
+            before = len(all_emails)
+            all_emails = [
+                e for e in all_emails
+                if not any(k in e.subject.lower() for k in ex_lower)
+            ]
+            dropped = before - len(all_emails)
+            if dropped:
+                logger.info(f"Excluded {dropped} email(s) by exclude_keywords")
 
         logger.info(f"Fetched {len(all_emails)} emails (after keyword filter).")
         return all_emails

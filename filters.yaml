@@ -54,6 +54,9 @@ weekly_filters:
       - "zukinteam@wolferesearch.com"
     keywords:
       - "Zukin's Next Week"
+    exclude_keywords:
+      - "IN ONE HOUR"
+      - "STARTING IN"
 
   - name: "Wolfe Software Sunday"
     senders:
