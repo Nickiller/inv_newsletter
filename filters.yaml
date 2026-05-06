@@ -48,6 +48,12 @@ filters:
     keywords:
       - "Chips for Breakfast"
 
+  - name: "JPM Tech HW & Semis"
+    senders:
+      - "feihong@etnalabs.co"
+    keywords:
+      - "Tech HW & Semis"
+
 # Weekly 必读邮件筛选（仅在 --weekly 模式下使用，不参与 daily monitor）
 weekly_filters:
   - name: "Bernstein Weekly Tech Check"

@@ -116,7 +116,17 @@ SYSTEM_PROMPT = """\
    - 金融行业术语保留英文原文，不要翻译（如 Street / Wall Street、buy-side、sell-side、consensus、guidance、beat/miss、read through / readthrough 等）。特别提醒：**不要**把 "read through" 翻译成"读穿"，保留英文即可
 
 4. **来源标注与链接**：
-   - **原文中出现的所有链接都必须保留**，无论是主流媒体（WSJ、Bloomberg、CNBC、Reuters 等）还是社区来源（TMTB Chat、Tae Kim、Semianalysis、FundaAI、Substack 等），格式：`[来源名](完整URL)` 紧跟在相关内容后
+   - **原文中出现的所有链接都必须保留**，包括：
+     a. 主流媒体（WSJ、Bloomberg、CNBC、Reuters、FT、Digitimes、TheRegister 等）
+     b. 社区/博客来源（TMTB Chat、Tae Kim、Semianalysis、FundaAI、Substack、x.com 等）
+     c. **卖方研报正文链接** — 这是最重要的一类，绝不能丢。常见形态：
+        - Jefferies: `https://jefferies.email.streetcontxt.net/...` 或 `javatar.bluematrix.com/...`
+        - JPM: `https://markets.jpmorgan.com/research/email/...` 或 `morganmarkets.com/...`
+        - Bernstein/MS/GS 等其他卖方的 research portal 链接
+        - 在原邮件中常以 inline 短词承载，如 `[notes](...)`, `[here](...)`, `[link](...)`, `[report](...)`, `[preview](...)`, `[piece](...)`, `[更多](...)`
+     d. 公司官网/IR 链接（press release、blog、SEC filing 等）
+   - **判定原则**：只要原邮件 markdown 里有 `[...](http...)`，就要在总结中保留对应 URL。**不要**因为锚文本看起来像导航词（"notes"、"here"、"link"）就丢弃 URL —— 这些恰恰是研报正文链接，对读者最有价值。
+   - **格式**：紧跟在对应内容 bullet 末尾，用有意义的来源名而不是原始锚文本。例如原文 `Brent [notes](https://jefferies...)` → 总结中写 `... [Jefferies 研报](https://jefferies...)` 或 `... [Jefferies — Brent](https://jefferies...)`。
    - 同一条内容若有多个来源链接，全部并排列出，**必须内联到对应内容 bullet 的末尾**
    - **严禁**单独起一个 bullet 只列链接（例如 `- [CNBC](...) [WSJ](...)` 这种是错的）；链接永远和具体内容在同一行
    - **如果已有具体链接，不需要再附加 `*来源：XXX (MM/DD)*`**；只有在没有任何具体链接时，才在末尾加 `*来源：{邮件标题简称} ({日期})*`
