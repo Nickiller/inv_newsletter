@@ -16,6 +16,63 @@ logger = logging.getLogger(__name__)
 
 last_usage: dict = {}  # populated by summarize_daily with {input_tokens, output_tokens, stop_reason}
 
+# Per-million-token USD prices (Anthropic public pricing). Update if pricing changes.
+_PRICE_PER_MTOK = {
+    "opus":   (15.00, 75.00),
+    "sonnet": (3.00, 15.00),
+    "haiku":  (1.00,  5.00),
+}
+_run_usage: list[dict] = []  # accumulated per summarize_daily run; reset at function entry
+
+
+def _price_tier(model: str) -> str | None:
+    m = model.lower()
+    for tier in _PRICE_PER_MTOK:
+        if tier in m:
+            return tier
+    return None
+
+
+def _record_usage(model: str, usage) -> None:
+    _run_usage.append({
+        "model": model,
+        "input_tokens": getattr(usage, "input_tokens", 0) or 0,
+        "output_tokens": getattr(usage, "output_tokens", 0) or 0,
+    })
+
+
+def _format_cost_report() -> str:
+    if not _run_usage:
+        return ""
+    by_model: dict[str, dict] = {}
+    for r in _run_usage:
+        e = by_model.setdefault(r["model"], {"calls": 0, "in": 0, "out": 0})
+        e["calls"] += 1
+        e["in"] += r["input_tokens"]
+        e["out"] += r["output_tokens"]
+    lines = ["", "=" * 70, "💰 本次运行 token 用量与估算费用", "=" * 70]
+    total = 0.0
+    unknown: list[str] = []
+    for model, e in by_model.items():
+        tier = _price_tier(model)
+        if tier is None:
+            unknown.append(model)
+            cost_str = "N/A"
+        else:
+            in_p, out_p = _PRICE_PER_MTOK[tier]
+            cost = e["in"] / 1_000_000 * in_p + e["out"] / 1_000_000 * out_p
+            total += cost
+            cost_str = f"${cost:.4f}"
+        lines.append(
+            f"  {model}: {e['calls']} 调用, "
+            f"in {e['in']:,} / out {e['out']:,} tokens → {cost_str}"
+        )
+    lines.append("-" * 70)
+    suffix = f"  (未识别模型: {', '.join(unknown)})" if unknown else ""
+    lines.append(f"  总计: ${total:.4f}{suffix}")
+    lines.append("=" * 70)
+    return "\n".join(lines)
+
 MIN_IMAGE_SIZE = 35 * 1024  # 35KB — skip logos/banners but keep small data charts
 MAX_IMAGES_PER_EMAIL = 5  # 每封邮件最多 5 张图（图表多的邮件如 JPM Sentiment Monitor 需要更多额度）
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
@@ -174,6 +231,8 @@ def summarize_daily(
 
     client = anthropic.Anthropic(api_key=api_key, base_url=base_url)
 
+    _run_usage.clear()
+
     # Pre-pass: caption every chart image with Haiku so the main LLM has a
     # text binding between IMG_XX and chart content (avoids visual/text mismatches).
     captions = _caption_all_images(client, emails)
@@ -202,6 +261,7 @@ def summarize_daily(
     logger.info(f"API response: {tokens_in} input tokens, {tokens_out} output tokens, stop_reason: {stop_reason}")
     last_usage.clear()
     last_usage.update({"input_tokens": tokens_in, "output_tokens": tokens_out, "stop_reason": stop_reason})
+    _record_usage(model, final.usage)
 
     # Detect truncation
     if stop_reason == "max_tokens":
@@ -231,6 +291,9 @@ def summarize_daily(
     logger.info(f"Digest written to {output_path}")
 
     _print_sources(emails, meritco_entries)
+    report = _format_cost_report()
+    if report:
+        print(report)
     return output_path
 
 
@@ -473,6 +536,7 @@ def _caption_one_image(client: anthropic.Anthropic, img_path: Path, media_type: 
             ],
         }],
     )
+    _record_usage(CAPTION_MODEL, resp.usage)
     return resp.content[0].text.strip().replace("\n", " ")
 
 
