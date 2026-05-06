@@ -16,6 +16,13 @@ filters:
     keywords:
       - "Jefferies Tech"
 
+  - name: "Jefferies While You Were Sleeping"
+    # 转发自 shuang@etnalabs.co，原发件人 comara@jefferies.com
+    senders:
+      - "shuang@etnalabs.co"
+    keywords:
+      - "While You Were Sleeping"
+
   - name: "Bernstein TMT"
     senders:
       - "tyler.seidman@bernsteinsg.com"
