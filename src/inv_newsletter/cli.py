@@ -7,8 +7,25 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from inv_newsletter.config import load_config
+from inv_newsletter.timing import flush as flush_timing
+from inv_newsletter.timing import get_timer, start_run
 
 logger = logging.getLogger(__name__)
+
+
+def _build_command_label(args) -> str:
+    parts = []
+    if args.summarize_only:
+        parts.append("summarize_only")
+    elif args.summarize:
+        parts.append("summarize")
+    elif args.publish_file:
+        return "publish_only"
+    else:
+        parts.append("fetch")
+    if args.publish:
+        parts.append("publish")
+    return "+".join(parts)
 
 
 def main():
@@ -60,17 +77,25 @@ def main():
         config.hours_back = args.hours
     base_dir = Path(args.data_dir) if args.data_dir else config.data_dir
 
-    # Monitor mode
+    # Monitor mode (telemetry not yet instrumented for monitor — Phase 2)
     if args.monitor:
         from inv_newsletter.monitor import run_monitor
         run_monitor(config, base_dir)
         return
 
-    # Weekly mode
+    # Weekly mode (telemetry not yet instrumented for weekly — Phase 2)
     if args.weekly:
         _do_weekly(config, base_dir, args.week_end)
         return
 
+    start_run(_build_command_label(args), target_date=args.date)
+    try:
+        _run_main(args, config, base_dir)
+    finally:
+        flush_timing()
+
+
+def _run_main(args, config, base_dir: Path):
     # Publish-file shortcut: just publish an existing .md, skip everything else
     if args.publish_file:
         _do_publish(Path(args.publish_file), config.summarization.lark_folder_token)
@@ -136,12 +161,14 @@ def _do_fetch(config, base_dir: Path, dry_run: bool):
     exclude_keywords = config.all_exclude_keywords or None
     logger.info(f"Fetching emails: {len(senders)} senders, {len(keywords or [])} keywords, last {config.hours_back}h")
 
-    emails = client.fetch_emails(
-        senders=senders,
-        keywords=keywords,
-        exclude_keywords=exclude_keywords,
-        hours_back=config.hours_back,
-    )
+    timer = get_timer()
+    with timer.phase("outlook_fetch", "cpu"):
+        emails = client.fetch_emails(
+            senders=senders,
+            keywords=keywords,
+            exclude_keywords=exclude_keywords,
+            hours_back=config.hours_back,
+        )
     logger.info(f"Found {len(emails)} matching emails.")
 
     if dry_run:
@@ -158,19 +185,20 @@ def _do_fetch(config, base_dir: Path, dry_run: bool):
     saved = 0
     skipped = 0
     errors = 0
-    for email in emails:
-        if is_already_fetched(email.id, base_dir):
-            skipped += 1
-            continue
-        try:
-            attachments = client.fetch_attachments(email.id)
-            result = convert_email(email.body_html, attachments, email.subject)
-            email_dir = save_email(email, result, base_dir)
-            mark_fetched(email.id, str(email_dir), base_dir)
-            saved += 1
-        except Exception as e:
-            errors += 1
-            logger.error(f"Failed to process '{email.subject}': {e}")
+    with timer.phase("convert_save", "cpu"):
+        for email in emails:
+            if is_already_fetched(email.id, base_dir):
+                skipped += 1
+                continue
+            try:
+                attachments = client.fetch_attachments(email.id)
+                result = convert_email(email.body_html, attachments, email.subject)
+                email_dir = save_email(email, result, base_dir)
+                mark_fetched(email.id, str(email_dir), base_dir)
+                saved += 1
+            except Exception as e:
+                errors += 1
+                logger.error(f"Failed to process '{email.subject}': {e}")
 
     print(f"\nFetch done. Saved: {saved}, Skipped: {skipped}, Errors: {errors}")
 
