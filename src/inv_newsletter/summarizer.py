@@ -38,6 +38,8 @@ def _record_usage(model: str, usage) -> None:
         "model": model,
         "input_tokens": getattr(usage, "input_tokens", 0) or 0,
         "output_tokens": getattr(usage, "output_tokens", 0) or 0,
+        "cache_creation_input_tokens": getattr(usage, "cache_creation_input_tokens", 0) or 0,
+        "cache_read_input_tokens": getattr(usage, "cache_read_input_tokens", 0) or 0,
     })
 
 
@@ -46,10 +48,12 @@ def _format_cost_report() -> str:
         return ""
     by_model: dict[str, dict] = {}
     for r in _run_usage:
-        e = by_model.setdefault(r["model"], {"calls": 0, "in": 0, "out": 0})
+        e = by_model.setdefault(r["model"], {"calls": 0, "in": 0, "out": 0, "cwrite": 0, "cread": 0})
         e["calls"] += 1
         e["in"] += r["input_tokens"]
         e["out"] += r["output_tokens"]
+        e["cwrite"] += r["cache_creation_input_tokens"]
+        e["cread"] += r["cache_read_input_tokens"]
     lines = ["", "=" * 70, "💰 本次运行 token 用量与估算费用", "=" * 70]
     total = 0.0
     unknown: list[str] = []
@@ -58,14 +62,22 @@ def _format_cost_report() -> str:
         if tier is None:
             unknown.append(model)
             cost_str = "N/A"
+            cache_str = ""
         else:
             in_p, out_p = _PRICE_PER_MTOK[tier]
-            cost = e["in"] / 1_000_000 * in_p + e["out"] / 1_000_000 * out_p
+            # Anthropic cache pricing: write = 1.25x input, read = 0.1x input
+            cost = (
+                e["in"] / 1_000_000 * in_p
+                + e["out"] / 1_000_000 * out_p
+                + e["cwrite"] / 1_000_000 * in_p * 1.25
+                + e["cread"] / 1_000_000 * in_p * 0.1
+            )
             total += cost
             cost_str = f"${cost:.4f}"
+            cache_str = f", cache w/r {e['cwrite']:,}/{e['cread']:,}" if (e["cwrite"] or e["cread"]) else ""
         lines.append(
             f"  {model}: {e['calls']} 调用, "
-            f"in {e['in']:,} / out {e['out']:,} tokens → {cost_str}"
+            f"in {e['in']:,} / out {e['out']:,} tokens{cache_str} → {cost_str}"
         )
     lines.append("-" * 70)
     suffix = f"  (未识别模型: {', '.join(unknown)})" if unknown else ""
@@ -82,110 +94,10 @@ MERITCO_EXCLUDED_INDUSTRIES = ("医疗", "医药", "健康")
 # Haiku-based image caption pre-pass (binds IMG_XX ↔ chart content for the main LLM)
 CAPTION_MODEL = "claude-haiku-4-5-20251001"
 CAPTION_CACHE_FILE = Path("data/.image_caption_cache.json")
-CAPTION_PROMPT = (
-    "用 1 句中文描述这张图表的内容（最多 40 字），并保留所有英文 ticker / 指标缩写原文（如 RBRK、NRR、Margin、AWS 等）不要翻译。"
-    "格式：[图表类型]，[主题/公司/指标]，[关键时间范围]。"
-    "图表类型例子：折线图/柱状图/表格/散点图/矩阵图/截图/堆叠图。"
-    "禁止：分析评论、推断、引用 logo/广告/作者署名。\n"
-    "示例 1：折线图，RBRK Cyber 占 Subscription NRR 比例，F2Q24-F4Q26\n"
-    "示例 2：矩阵图，JPM Internet 板块对冲基金 sentiment 分布\n"
-    "示例 3：表格，Buy-side expectations 本周财报预期 (SPOT/BKNG/AMZN/MSFT 等)"
-)
+_PROMPTS_DIR = Path(__file__).parent / "prompts"
+CAPTION_PROMPT = (_PROMPTS_DIR / "image_caption.md").read_text(encoding="utf-8").strip()
 
-SYSTEM_PROMPT = """\
-你是一位资深投研分析师助手。请将以下多封投研邮件整理为结构化的每日摘要。
-
-## 输出要求
-
-1. **板块排序**：严格按以下固定顺序组织内容（AI 模型与平台始终排第一）：
-   - AI 模型与平台
-   - 宏观与市场
-   - 半导体与硬件
-   - 互联网与数字广告
-   - 软件与SaaS
-   - 网络安全
-   - 其他
-
-2. **Ticker 归类**：同一板块内按公司/Ticker 归类，合并多封邮件中对同一 Ticker 的分析。用 `### TICKER (公司名)` 作为小标题。如果某板块没有明确 Ticker，可用子主题分类（如"地缘政治与能源"、"市场情绪"）。
-
-3. **中文详细输出**：
-   - 保留关键数据（价格目标、估值倍数、增长率、市场份额、具体数字、百分比等）
-   - 保留分析师观点、投资逻辑和业务细节
-   - 每个要点用 bullet point
-   - 不要过度压缩信息，保持原文的信息密度
-   - 金融行业术语保留英文原文，不要翻译（如 Street / Wall Street、buy-side、sell-side、consensus、guidance、beat/miss、read through / readthrough 等）。特别提醒：**不要**把 "read through" 翻译成"读穿"，保留英文即可
-
-4. **来源标注与链接**：
-   - **原文中出现的所有链接都必须保留**，包括：
-     a. 主流媒体（WSJ、Bloomberg、CNBC、Reuters、FT、Digitimes、TheRegister 等）
-     b. 社区/博客来源（TMTB Chat、Tae Kim、Semianalysis、FundaAI、Substack、x.com 等）
-     c. **卖方研报正文链接** — 这是最重要的一类，绝不能丢。常见形态：
-        - Jefferies: `https://jefferies.email.streetcontxt.net/...` 或 `javatar.bluematrix.com/...`
-        - JPM: `https://markets.jpmorgan.com/research/email/...` 或 `morganmarkets.com/...`
-        - Bernstein/MS/GS 等其他卖方的 research portal 链接
-        - 在原邮件中常以 inline 短词承载，如 `[notes](...)`, `[here](...)`, `[link](...)`, `[report](...)`, `[preview](...)`, `[piece](...)`, `[更多](...)`
-     d. 公司官网/IR 链接（press release、blog、SEC filing 等）
-   - **判定原则**：只要原邮件 markdown 里有 `[...](http...)`，就要在总结中保留对应 URL。**不要**因为锚文本看起来像导航词（"notes"、"here"、"link"）就丢弃 URL —— 这些恰恰是研报正文链接，对读者最有价值。
-   - **格式**：紧跟在对应内容 bullet 末尾，用有意义的来源名而不是原始锚文本。例如原文 `Brent [notes](https://jefferies...)` → 总结中写 `... [Jefferies 研报](https://jefferies...)` 或 `... [Jefferies — Brent](https://jefferies...)`。
-   - 同一条内容若有多个来源链接，全部并排列出，**必须内联到对应内容 bullet 的末尾**
-   - **严禁**单独起一个 bullet 只列链接（例如 `- [CNBC](...) [WSJ](...)` 这种是错的）；链接永远和具体内容在同一行
-   - **如果已有具体链接，不需要再附加 `*来源：XXX (MM/DD)*`**；只有在没有任何具体链接时，才在末尾加 `*来源：{邮件标题简称} ({日期})*`
-   - 示例（正确 ✅）：
-     ```
-     - DeepSeek 发布 V4 预览版，外媒普遍视为中国 AI 竞争升温的标志 [CNBC](https://...) [WSJ](https://...)
-     - 加剧模型层竞争和价格压力，企业采购更愿意保留多模型选项
-     ```
-   - 示例（错误 ❌，禁止）：
-     ```
-     - DeepSeek 发布 V4 预览版
-     - 加剧模型层竞争和价格压力
-     - [CNBC](https://...) [WSJ](https://...)      ← 禁止：链接不能独立成 bullet
-     ```
-   - 示例（无链接）：`分析师认为软件名义将滞后 *来源：Jefferies (04/01)*`
-   - **久谦论坛纪要**：每条纪要都附带 `source_url`（meritco-group.com 链接）和 `date`，归类到对应 Ticker 下时**必须**引用 source_url，格式：`[久谦纪要 — {专家简称}](source_url)` 紧跟在相关内容后；同时在末尾标注 `*({MM/DD})*` 标明纪要日期。纪要为专家 Q&A 格式，提取关键数据点和结论即可，不需要保留问答原文。示例：`Agent 试点占比 45% [久谦 — Cognizant 离职专家](https://research.meritco-group.com/forum?forumType=2&forumId=3114) *(04/23)*`
-
-5. **图表引用与分析**：
-   - 每张图片都有唯一 ID（如 `IMG_01`），在发送时已标注，**完整可用清单会在用户消息末尾给出**
-   - **三条硬性规则**：
-     1. **严禁引用清单外的 ID**（如清单只到 IMG_06，禁止写 IMG_07/IMG_08...）
-     2. **每个 IMG_XX 在整个输出中至多引用一次**，禁止换 caption 重复使用同一 ID
-     3. **caption 必须与图片视觉内容一致**（看图本身判断，不能因为临近的文字段落是某个主题就硬塞 ID）
-   - 找不到内容匹配的真实图片时，用纯文字描述数据点替代，不要硬塞图片引用
-   - 当某张**实际可用**的图表对分析有价值时，用 markdown 图片语法嵌入：`![简短描述](IMG_01)`，并紧跟一段文字描述图表关键数据点（具体数字、百分比）和趋势
-   - 不要嵌入 logo、签名、广告等无信息量的图片，只嵌入图表、数据表格、定价截图等有分析价值的图片
-   - 示例：
-     ```
-     ![Mag7 仓位历史分位](IMG_02)
-     📊 Mag7 composite sentiment 当前约 -0.7，接近 max bearish（-1），为 2023 年以来最低。
-     ```
-
-6. **催化剂日历**：在文末汇总"本周关注"事件（财报、会议、数据发布等，如有）。
-
-7. **AI Builders Digest 特殊处理**：如果某封"邮件"的发件人是 `follow-builders`（subject 形如 "AI Builders Digest — ..."），它不是投研邮件，而是 AI builders（创始人/研究员/PM）在 X 和播客上的发言汇总：
-   - 归入"AI 模型与平台"板块，作为该板块的独立子主题（用 `### AI Builders 动态` 作为小标题，排在该板块其他 Ticker 之前或之后均可）
-   - **不要求** Ticker 归类；按人物/话题组织即可（如 `**Aaron Levie (Box CEO)**: ...`）
-   - 保留原文中所有 x.com / 播客 URL，格式 `[来源](完整URL)`
-   - 不要和投研邮件里对同一公司的财务分析强行合并；两者视角不同，各自成段
-   - 如果 builders 提到的话题和邮件里的某 Ticker 强相关（如都在讨论 NVDA 新品），可以在该 Ticker 条目下加一条"builders 视角："引用，但不要替代
-
-## 输出格式
-
-```markdown
-# Daily Research Digest — {日期}
-
-> 基于 N 封研报邮件整理，按板块/Ticker 排序。
-
----
-
-## 宏观与市场
-...
-
-## AI 模型与平台
-### Ticker (公司名)
-- 要点... *来源：XXX (MM/DD)*
-...
-```
-"""
+SYSTEM_PROMPT = (_PROMPTS_DIR / "digest_system.md").read_text(encoding="utf-8")
 
 
 def summarize_daily(
@@ -197,11 +109,21 @@ def summarize_daily(
     meritco_dir: Path | None = None,
     meritco_days: int = 3,
     filename_suffix: str = "",
+    prompt_file: Path | None = None,
 ) -> Path:
-    """Load emails for a date, call Claude API, write digest. Returns output path."""
+    """Load emails for a date, call Claude API, write digest. Returns output path.
+
+    prompt_file: optional override for the system prompt. Defaults to
+    prompts/digest_system.md (loaded as SYSTEM_PROMPT at module import).
+    """
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY not set. Add it to .env or environment.")
+
+    system_prompt = SYSTEM_PROMPT
+    if prompt_file is not None:
+        system_prompt = Path(prompt_file).read_text(encoding="utf-8")
+        logger.info(f"Using custom system prompt: {prompt_file}")
 
     base_url = os.environ.get("ANTHROPIC_BASE_URL")
 
@@ -255,7 +177,7 @@ def summarize_daily(
     with client.messages.stream(
         model=model,
         max_tokens=max_tokens,
-        system=SYSTEM_PROMPT,
+        system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": content_blocks}],
     ) as stream:
         for text in stream.text_stream:
@@ -267,8 +189,15 @@ def summarize_daily(
     digest = "".join(chunks)
     tokens_in = final.usage.input_tokens
     tokens_out = final.usage.output_tokens
+    cache_write = getattr(final.usage, "cache_creation_input_tokens", 0) or 0
+    cache_read = getattr(final.usage, "cache_read_input_tokens", 0) or 0
     stop_reason = final.stop_reason
-    logger.info(f"API response: {tokens_in} input tokens, {tokens_out} output tokens, stop_reason: {stop_reason}")
+    cache_msg = ""
+    if cache_write:
+        cache_msg = f", cache write +{cache_write}"
+    elif cache_read:
+        cache_msg = f", cache hit {cache_read}"
+    logger.info(f"API response: {tokens_in} input tokens{cache_msg}, {tokens_out} output tokens, stop_reason: {stop_reason}")
     last_usage.clear()
     last_usage.update({"input_tokens": tokens_in, "output_tokens": tokens_out, "stop_reason": stop_reason})
     _record_usage(model, final.usage)

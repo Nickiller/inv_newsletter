@@ -42,12 +42,17 @@ def main():
                         help="Publish digest to Lark/Feishu after summarizing (or for existing .md)")
     parser.add_argument("--publish-file", default=None,
                         help="Publish a specific markdown file to Lark (skips fetch & summarize)")
+    parser.add_argument("--suffix", default="",
+                        help="Filename suffix appended before .md (e.g. '_v2'). Avoids overwriting existing digests during prompt A/B comparison.")
+    parser.add_argument("--prompt-file", default=None,
+                        help="Path to alternative system prompt .md (default: prompts/digest_system.md). Used together with --suffix for A/B testing.")
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
-        format="%(levelname)s: %(message)s",
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%H:%M:%S",
     )
 
     config = load_config(Path(args.config))
@@ -92,7 +97,11 @@ def main():
     # Summarize (if --summarize or --summarize-only)
     summary_path = None
     if (args.summarize or args.summarize_only) and not args.dry_run:
-        summary_path = _do_summarize(config, base_dir, args.date, args.meritco_days)
+        summary_path = _do_summarize(
+            config, base_dir, args.date, args.meritco_days,
+            filename_suffix=args.suffix,
+            prompt_file=Path(args.prompt_file) if args.prompt_file else None,
+        )
 
     # Publish to Lark
     if args.publish and not args.dry_run:
@@ -273,7 +282,10 @@ def _do_meritco(target_date: str | None, exclude_industries: list[str] | None = 
     print(f"\nMeritco: saved {len(saved)} minutes for {target_date}")
 
 
-def _do_summarize(config, base_dir: Path, target_date: str | None, meritco_days: int = 3):
+def _do_summarize(
+    config, base_dir: Path, target_date: str | None, meritco_days: int = 3,
+    filename_suffix: str = "", prompt_file: Path | None = None,
+):
     from inv_newsletter.meritco import MERITCO_DATA_DIR
     from inv_newsletter.summarizer import summarize_daily
 
@@ -286,6 +298,8 @@ def _do_summarize(config, base_dir: Path, target_date: str | None, meritco_days:
         max_tokens=sum_cfg.max_tokens,
         meritco_dir=MERITCO_DATA_DIR if MERITCO_DATA_DIR.exists() else None,
         meritco_days=meritco_days,
+        filename_suffix=filename_suffix,
+        prompt_file=prompt_file,
     )
 
     print(f"\nSaved to: {output_path}")
