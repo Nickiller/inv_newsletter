@@ -15,6 +15,8 @@ import re
 import subprocess
 from pathlib import Path
 
+from inv_newsletter.timing import get_timer
+
 logger = logging.getLogger(__name__)
 
 IMG_PATTERN = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
@@ -22,6 +24,11 @@ IMG_PATTERN = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 
 def publish_digest(md_path: Path, title: str | None = None, folder_token: str | None = None) -> dict:
     """Publish markdown file to Lark. Returns {doc_id, doc_url}."""
+    with get_timer().phase("lark_publish", "cpu"):
+        return _publish_digest_impl(md_path, title, folder_token)
+
+
+def _publish_digest_impl(md_path: Path, title: str | None, folder_token: str | None) -> dict:
     md_path = Path(md_path).resolve()
     if not md_path.exists():
         raise FileNotFoundError(md_path)

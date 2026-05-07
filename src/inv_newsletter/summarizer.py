@@ -6,11 +6,14 @@ import logging
 import os
 import re
 import shutil
+import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import anthropic
 import yaml
+
+from .timing import get_timer
 
 logger = logging.getLogger(__name__)
 
@@ -138,21 +141,24 @@ def summarize_daily(
         if not (data_dir / target_date).exists():
             raise RuntimeError(f"No data for date {target_date} in {data_dir}")
 
-    date_dir = data_dir / target_date
-    emails = _load_emails(date_dir)
+    timer = get_timer()
 
-    # Load Meritco minutes from past N days (today + N-1 prior)
-    meritco_entries: list[dict] = []
-    if meritco_dir is not None and meritco_days > 0:
-        target_dt = datetime.strptime(target_date, "%Y-%m-%d").date()
-        for offset in range(meritco_days):
-            d = target_dt - timedelta(days=offset)
-            day_dir = meritco_dir / d.isoformat()
-            if day_dir.exists():
-                meritco_entries.extend(_load_meritco(day_dir, d.isoformat()))
-        logger.info(
-            f"Loaded {len(meritco_entries)} Meritco minutes from past {meritco_days} day(s)"
-        )
+    with timer.phase("load_inputs", "cpu"):
+        date_dir = data_dir / target_date
+        emails = _load_emails(date_dir)
+
+        # Load Meritco minutes from past N days (today + N-1 prior)
+        meritco_entries: list[dict] = []
+        if meritco_dir is not None and meritco_days > 0:
+            target_dt = datetime.strptime(target_date, "%Y-%m-%d").date()
+            for offset in range(meritco_days):
+                d = target_dt - timedelta(days=offset)
+                day_dir = meritco_dir / d.isoformat()
+                if day_dir.exists():
+                    meritco_entries.extend(_load_meritco(day_dir, d.isoformat()))
+            logger.info(
+                f"Loaded {len(meritco_entries)} Meritco minutes from past {meritco_days} day(s)"
+            )
 
     if not emails and not meritco_entries:
         raise RuntimeError(f"No emails or meritco minutes found for {target_date}")
@@ -170,10 +176,12 @@ def summarize_daily(
     captions = _caption_all_images(client, emails)
 
     # Build API request — also collect img_id → path mapping
-    content_blocks, img_map, img_caption = _build_content_blocks(emails, meritco_entries, captions)
+    with timer.phase("build_blocks", "cpu"):
+        content_blocks, img_map, img_caption = _build_content_blocks(emails, meritco_entries, captions)
 
     logger.info(f"Calling Claude API ({model}) [streaming]...")
     chunks = []
+    t_main_start = time.perf_counter()
     with client.messages.stream(
         model=model,
         max_tokens=max_tokens,
@@ -185,6 +193,7 @@ def summarize_daily(
             chunks.append(text)
         print()  # newline after streaming
         final = stream.get_final_message()
+    main_duration = time.perf_counter() - t_main_start
 
     digest = "".join(chunks)
     tokens_in = final.usage.input_tokens
@@ -201,6 +210,14 @@ def summarize_daily(
     last_usage.clear()
     last_usage.update({"input_tokens": tokens_in, "output_tokens": tokens_out, "stop_reason": stop_reason})
     _record_usage(model, final.usage)
+    timer.record_llm_call(
+        "main_digest",
+        model=model,
+        duration_sec=main_duration,
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        stop_reason=stop_reason,
+    )
 
     # Detect truncation
     if stop_reason == "max_tokens":
@@ -220,13 +237,14 @@ def summarize_daily(
     img_dir = output_dir / target_date
     output_path = output_dir / f"{target_date}_daily_digest{filename_suffix}.md"
 
-    # Deterministic post-processing: drop reused/mismatched/out-of-range image refs
-    digest = _validate_image_refs(digest, img_caption)
+    with timer.phase("write_output", "cpu"):
+        # Deterministic post-processing: drop reused/mismatched/out-of-range image refs
+        digest = _validate_image_refs(digest, img_caption)
 
-    # Copy referenced images to date subdir and replace IMG_XX with relative paths
-    digest = _embed_images(digest, img_map, img_dir, target_date)
+        # Copy referenced images to date subdir and replace IMG_XX with relative paths
+        digest = _embed_images(digest, img_map, img_dir, target_date)
 
-    output_path.write_text(digest, encoding="utf-8")
+        output_path.write_text(digest, encoding="utf-8")
     logger.info(f"Digest written to {output_path}")
 
     _print_sources(emails, meritco_entries)
@@ -483,6 +501,8 @@ def _caption_all_images(client: anthropic.Anthropic, emails: list[dict]) -> dict
     """Caption every selected image. Returns {path_str: caption}, cached on disk."""
     cache = _load_caption_cache()
     new_count = 0
+    usage_start = len(_run_usage)
+    t0 = time.perf_counter()
     for email in emails:
         for img in email["images"]:
             key = str(img["path"])
@@ -495,9 +515,19 @@ def _caption_all_images(client: anthropic.Anthropic, emails: list[dict]) -> dict
             except Exception as e:
                 logger.warning(f"Caption failed for {img['path']}: {e}")
                 cache[key] = ""  # mark attempted; empty caption falls back to subject
+    duration = time.perf_counter() - t0
     if new_count:
         _save_caption_cache(cache)
         logger.info(f"Captioned {new_count} new image(s) with {CAPTION_MODEL}")
+        new_entries = _run_usage[usage_start:]
+        get_timer().record_llm_call(
+            "haiku_caption",
+            model=CAPTION_MODEL,
+            duration_sec=duration,
+            tokens_in=sum(e["input_tokens"] for e in new_entries),
+            tokens_out=sum(e["output_tokens"] for e in new_entries),
+            calls=new_count,
+        )
     return cache
 
 
