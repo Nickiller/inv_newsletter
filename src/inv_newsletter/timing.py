@@ -59,6 +59,7 @@ class RunTimer:
         tokens_out: int,
         stop_reason: str | None = None,
         calls: int = 1,
+        tokens_out_estimated: bool = False,
     ) -> None:
         entry = {
             "name": name,
@@ -71,6 +72,8 @@ class RunTimer:
         }
         if stop_reason is not None:
             entry["stop_reason"] = stop_reason
+        if tokens_out_estimated:
+            entry["tokens_out_estimated"] = True
         self.phases.append(entry)
 
 
@@ -173,7 +176,8 @@ def _print_summary(record: dict) -> None:
             if p["calls"] != 1:
                 extras.append(f"{p['calls']} calls")
             extras.append(model_short)
-            extras.append(f"{_fmt_tok(p['tokens_in'])} → {_fmt_tok(p['tokens_out'])} tok")
+            out_str = f"~{_fmt_tok(p['tokens_out'])} tok (est)" if p.get("tokens_out_estimated") else f"{_fmt_tok(p['tokens_out'])} tok"
+            extras.append(f"{_fmt_tok(p['tokens_in'])} → {out_str}")
             stop = p.get("stop_reason")
             if stop and stop != "end_turn":
                 extras.append(f"stop={stop}")
