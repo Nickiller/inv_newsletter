@@ -46,6 +46,13 @@ def _record_usage(model: str, usage) -> None:
     })
 
 
+def _estimate_tokens_from_text(text: str) -> int:
+    # Fallback for proxies that don't relay the streaming message_delta event,
+    # leaving final.usage.output_tokens=0. ~4 ASCII chars/token, ~1 token/CJK char.
+    ascii_n = sum(1 for c in text if ord(c) < 128)
+    return int(ascii_n / 4 + (len(text) - ascii_n))
+
+
 def _format_cost_report() -> str:
     if not _run_usage:
         return ""
@@ -201,15 +208,42 @@ def summarize_daily(
     cache_write = getattr(final.usage, "cache_creation_input_tokens", 0) or 0
     cache_read = getattr(final.usage, "cache_read_input_tokens", 0) or 0
     stop_reason = final.stop_reason
+
+    # Some proxies drop the final message_delta SSE event, leaving output_tokens=0
+    # and stop_reason=None even though the text streamed back fine. Fall back to a
+    # length-based estimate so cost/telemetry stays useful.
+    tokens_out_estimated = False
+    if tokens_out == 0 and digest:
+        tokens_out = _estimate_tokens_from_text(digest)
+        tokens_out_estimated = True
+        logger.warning(
+            f"Streaming response missing usage (likely proxy quirk). "
+            f"Estimated output_tokens from text length: ~{tokens_out}"
+        )
+    if stop_reason is None and digest:
+        stop_reason = "end_turn"  # inferred; proxy didn't relay message_delta
+
     cache_msg = ""
     if cache_write:
         cache_msg = f", cache write +{cache_write}"
     elif cache_read:
         cache_msg = f", cache hit {cache_read}"
-    logger.info(f"API response: {tokens_in} input tokens{cache_msg}, {tokens_out} output tokens, stop_reason: {stop_reason}")
+    out_label = f"~{tokens_out} (est)" if tokens_out_estimated else str(tokens_out)
+    logger.info(f"API response: {tokens_in} input tokens{cache_msg}, {out_label} output tokens, stop_reason: {stop_reason}")
     last_usage.clear()
-    last_usage.update({"input_tokens": tokens_in, "output_tokens": tokens_out, "stop_reason": stop_reason})
-    _record_usage(model, final.usage)
+    last_usage.update({
+        "input_tokens": tokens_in,
+        "output_tokens": tokens_out,
+        "stop_reason": stop_reason,
+        "output_tokens_estimated": tokens_out_estimated,
+    })
+    _run_usage.append({
+        "model": model,
+        "input_tokens": tokens_in,
+        "output_tokens": tokens_out,
+        "cache_creation_input_tokens": cache_write,
+        "cache_read_input_tokens": cache_read,
+    })
     timer.record_llm_call(
         "main_digest",
         model=model,
@@ -217,6 +251,7 @@ def summarize_daily(
         tokens_in=tokens_in,
         tokens_out=tokens_out,
         stop_reason=stop_reason,
+        tokens_out_estimated=tokens_out_estimated,
     )
 
     # Detect truncation
