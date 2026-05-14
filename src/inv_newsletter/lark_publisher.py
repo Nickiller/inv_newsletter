@@ -1,10 +1,11 @@
 """Publish a daily digest markdown to Feishu/Lark using lark-cli.
 
 Workflow:
-1. Parse markdown into text/image segments
-2. Create Lark doc with title (and first text segment)
-3. For each subsequent segment: append text via `docs +update`, or insert image via `docs +media-insert`
-4. Image paths in markdown are resolved relative to the .md file, then re-mapped to cwd-relative paths
+1. Pre-process markdown: wrap `## 今日要点` body in <callout>, append `## 信息来源` footer
+2. Parse markdown into text/image segments
+3. Create Lark doc with title (and first text segment)
+4. For each subsequent segment: append text via `docs +update`, or insert image via `docs +media-insert`
+5. Image paths in markdown are resolved relative to the .md file, then re-mapped to cwd-relative paths
 
 Note: lark-cli requires the file path to be relative to the current working directory.
 """
@@ -13,13 +14,22 @@ import json
 import logging
 import re
 import subprocess
+from datetime import datetime, timedelta
 from pathlib import Path
+
+import yaml
 
 from inv_newsletter.timing import get_timer
 
 logger = logging.getLogger(__name__)
 
 IMG_PATTERN = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
+DATE_PATTERN = re.compile(r"^(\d{4}-\d{2}-\d{2})_")
+TLDR_PATTERN = re.compile(
+    r"(^## 今日要点[^\n]*\n\n?)(.*?)(?=^## |\Z)",
+    re.MULTILINE | re.DOTALL,
+)
+MERITCO_URL_TEMPLATE = "https://research.meritco-group.com/forum?forumType=2&forumId={id}"
 
 
 def publish_digest(md_path: Path, title: str | None = None, folder_token: str | None = None) -> dict:
@@ -36,6 +46,22 @@ def _publish_digest_impl(md_path: Path, title: str | None, folder_token: str | N
     md_text = md_path.read_text(encoding="utf-8")
     if title is None:
         title = md_path.stem  # e.g. 2026-04-10_daily_digest
+
+    # Pre-process: wrap TL;DR in callout block + append sources footer
+    md_text = _wrap_tldr_in_callout(md_text)
+    date_str = _extract_date(md_path)
+    if date_str:
+        try:
+            sources = _load_sources(date_str, Path.cwd())
+            sources_md = _render_sources_section(sources)
+            if sources_md:
+                md_text = md_text.rstrip() + "\n\n" + sources_md
+                logger.info(
+                    f"Appended sources footer: {len(sources['emails'])} emails + "
+                    f"{len(sources['meritco'])} meritco entries"
+                )
+        except Exception as e:
+            logger.warning(f"Failed to load source metadata for {date_str}: {e}")
 
     segments = _split_segments(md_text, md_path.parent)
     if not segments:
@@ -88,6 +114,134 @@ def _extract_title(md_text: str) -> str | None:
         if line.startswith("# "):
             return line[2:].strip()
     return None
+
+
+def _extract_date(md_path: Path) -> str | None:
+    """Extract YYYY-MM-DD from filename like 2026-05-13_daily_digest_v3.md."""
+    m = DATE_PATTERN.match(md_path.name)
+    return m.group(1) if m else None
+
+
+def _wrap_tldr_in_callout(md_text: str) -> str:
+    """Wrap `## 今日要点` body (until next ##) in a Lark callout block.
+
+    Header stays outside callout so it appears in the doc's TOC. Only the bullets
+    + sub-bullets go into the colored highlight block.
+    """
+    def replace(m):
+        header = m.group(1)
+        body = m.group(2).rstrip()
+        if not body:
+            return m.group(0)
+        return (
+            f"{header}"
+            f'<callout emoji="📌" background-color="light-yellow" border-color="yellow">\n'
+            f"{body}\n"
+            f"</callout>\n\n"
+        )
+    return TLDR_PATTERN.sub(replace, md_text, count=1)
+
+
+def _parse_yaml_frontmatter(text: str) -> tuple[dict, str]:
+    """Split YAML frontmatter from markdown body."""
+    if not text.startswith("---"):
+        return {}, text
+    parts = text.split("---", 2)
+    if len(parts) < 3:
+        return {}, text
+    fm = yaml.safe_load(parts[1]) or {}
+    body = parts[2].strip()
+    return fm, body
+
+
+def _meritco_id_to_url(meritco_id) -> str | None:
+    m = re.search(r"(\d+)", str(meritco_id or ""))
+    return MERITCO_URL_TEMPLATE.format(id=m.group(1)) if m else None
+
+
+def _load_sources(date_str: str, project_root: Path, meritco_days: int = 3) -> dict:
+    """Load email + meritco metadata for the digest date.
+
+    Returns {"emails": [...], "meritco": [...]} where each entry has the fields
+    needed to render the source footer (subject, sender, time, source_url where
+    available).
+    """
+    emails: list[dict] = []
+    mail_dir = project_root / "data" / "mail" / date_str
+    if mail_dir.exists():
+        for email_md in sorted(mail_dir.glob("*/email.md")):
+            try:
+                raw = email_md.read_text(encoding="utf-8")
+                fm, _ = _parse_yaml_frontmatter(raw)
+                emails.append({
+                    "subject": fm.get("subject", "") or "",
+                    "sender_name": fm.get("sender_name", "") or "",
+                    "received_at": fm.get("received_at", "") or "",
+                })
+            except Exception as e:
+                logger.debug(f"Failed to read email metadata from {email_md}: {e}")
+
+    meritco: list[dict] = []
+    try:
+        target_dt = datetime.strptime(date_str, "%Y-%m-%d").date()
+    except ValueError:
+        target_dt = None
+    if target_dt is not None:
+        for offset in range(meritco_days):
+            d = target_dt - timedelta(days=offset)
+            day_dir = project_root / "data" / "meritco" / d.isoformat()
+            if not day_dir.exists():
+                continue
+            for md_file in sorted(day_dir.glob("*.md")):
+                try:
+                    raw = md_file.read_text(encoding="utf-8")
+                    fm, _ = _parse_yaml_frontmatter(raw)
+                    meritco.append({
+                        "subject": fm.get("subject", "") or "",
+                        "tickers": fm.get("tickers", []) or [],
+                        "date": d.isoformat(),
+                        "source_url": _meritco_id_to_url(fm.get("id", "")),
+                    })
+                except Exception as e:
+                    logger.debug(f"Failed to read meritco metadata from {md_file}: {e}")
+
+    return {"emails": emails, "meritco": meritco}
+
+
+def _render_sources_section(sources: dict) -> str:
+    """Render the markdown for the `## 信息来源` footer section."""
+    if not sources.get("emails") and not sources.get("meritco"):
+        return ""
+    lines = ["---", "", "## 信息来源", ""]
+    emails = sources.get("emails", [])
+    if emails:
+        lines.append(f"### 邮件（{len(emails)} 封）")
+        lines.append("")
+        for e in emails:
+            received = e.get("received_at", "")
+            time_str = received[:16].replace("T", " ") if received else ""
+            sender = e.get("sender_name", "—")
+            subject = e.get("subject", "—")
+            time_prefix = f"*{time_str}* · " if time_str else ""
+            lines.append(f"- {time_prefix}**{sender}**：{subject}")
+        lines.append("")
+    meritco = sources.get("meritco", [])
+    if meritco:
+        lines.append(f"### 久谦纪要（{len(meritco)} 条）")
+        lines.append("")
+        for m in meritco:
+            tickers = m.get("tickers") or []
+            tickers_str = "/".join(tickers) if tickers else "—"
+            date_str = m.get("date", "")
+            date_prefix = f"*{date_str}* · " if date_str else ""
+            subject = m.get("subject", "—")
+            url = m.get("source_url")
+            if url:
+                lines.append(f"- {date_prefix}{tickers_str} · [{subject}]({url})")
+            else:
+                lines.append(f"- {date_prefix}{tickers_str} · {subject}")
+        lines.append("")
+    return "\n".join(lines)
 
 
 def _split_segments(md_text: str, base_dir: Path) -> list[tuple[str, object]]:
