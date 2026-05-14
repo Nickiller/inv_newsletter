@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from inv_newsletter.converter import ConversionResult
+from inv_newsletter.fomo_format import is_fomo_email, reformat_content
 from inv_newsletter.outlook import Email
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,8 @@ def save_email(email: Email, result: ConversionResult, base_dir: Path) -> Path:
 
     # Write email.md
     md_content = frontmatter + f"# {email.subject}\n\n" + result.markdown
+    if is_fomo_email(email.sender_address):
+        md_content = reformat_content(md_content)
     (email_dir / "email.md").write_text(md_content, encoding="utf-8")
 
     logger.info(f"Saved: {email_dir.relative_to(base_dir)}")
