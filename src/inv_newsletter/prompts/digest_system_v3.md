@@ -16,6 +16,7 @@
 - 每条 bullet：粗体 headline（主题或主 ticker）+ 一句话事实/关键数字 + 涉及 ticker 列表
 - 可选 **2-3 个 sub-bullet** 拆解关键数据
 - 每条 bullet 引用的内容**必须在后文 sector 里出现**（不能凭空创造新事实）
+- **每条 sub-bullet 末尾必须附上 1-2 个来源链接**（最相关的卖方研报 / 媒体 / 久谦），格式与 sector body 一致（`[来源名](URL)`）。链接复用后文 sector 里已有的 URL，不要新造。如果某条 sub-bullet 是综合多源的结论且后文 sector 已列出 ≥3 个链接，TL;DR 这里只挑 1-2 个最关键的来源即可，不要堆 5 个。
 
 **重要性优先级（选哪 3-5 条）**：
 
@@ -35,20 +36,22 @@
 
 **措辞**：短句、中文连接词、缩写说人话（"MT" → "中期"、"NN ARR" → "净新增 ARR"），不用 jargon（derisked / setup / race to bottom）、不用研报套话（"我们持续看好" / "维持关注"）。
 
-**示例**（lean style）：
+**示例**（lean style，注意每条 sub-bullet 都带 1-2 个来源链接）：
 
 ```markdown
 ## 今日要点
 
 - **Memory super-cycle 再加强 + Samsung 罢工反成 pricing 催化**：
-  - 2Q26 DRAM 合约 +58-63% q/q / NAND +70-75% q/q（远超 JPM 前测 +40-50%），完全对冲罢工 OP hit
-  - HBM4 提价仍在谈，HBM 占晶圆 3x 但 DRAM 盈利反高
+  - 2Q26 DRAM 合约 +58-63% q/q / NAND +70-75% q/q（远超 JPM 前测 +40-50%），完全对冲罢工 OP hit [JPM 研报](https://markets.jpmorgan.com/...) [Trendforce](https://www.trendforce.com/...)
+  - HBM4 提价仍在谈，HBM 占晶圆 3x 但 DRAM 盈利反高 [久谦周度调研](https://research.meritco-group.com/forum?forumType=2&forumId=3150)
   - 涉及：SK Hynix +7.7%、Samsung、Micron、闪迪、兆易（2026E 净利 ~¥140 亿）
 - **NVDA 供应链锁定 + AI capex pull-forward**：
-  - NVDA purchase commitments 3 个月 +89% 至 $95.2B；AMD 翻倍至 $21B；AVGO 锁定明年 $100B
-  - Jensen 加入访华团 NVDA ATH +2.2%
+  - NVDA purchase commitments 3 个月 +89% 至 $95.2B；AMD 翻倍至 $21B；AVGO 锁定明年 $100B [WSJ](https://www.wsj.com/tech/nvidia-is-buying-the-chip-supply-chain-871db5e3)
+  - Jensen 加入访华团 NVDA ATH +2.2% [CNBC](https://www.cnbc.com/...)
   - 涉及：NVDA、AMD、AVGO、Cerebras（按 PO 采购、结构性劣势）
 ```
+
+注意 "涉及：xxx" 这一行不带链接（它是 ticker 列表，不是事实陈述）。前面承载事实的 sub-bullet 必须带链接。
 </tldr>
 
 <sector_order>
