@@ -99,7 +99,9 @@ MIN_IMAGE_SIZE = 35 * 1024  # 35KB — skip logos/banners but keep small data ch
 MAX_IMAGES_PER_EMAIL = 5  # 每封邮件最多 5 张图（图表多的邮件如 JPM Sentiment Monitor 需要更多额度）
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 MERITCO_URL_TEMPLATE = "https://research.meritco-group.com/forum?forumType=2&forumId={id}"
-MERITCO_EXCLUDED_INDUSTRIES = ("医疗", "医药", "健康")
+MERITCO_EXCLUDED_INDUSTRIES = (
+    "医疗", "医药", "健康", "创新药", "生物科技", "生物医药", "制药", "生命科学"
+)
 
 # Haiku-based image caption pre-pass (binds IMG_XX ↔ chart content for the main LLM)
 CAPTION_MODEL = "claude-haiku-4-5-20251001"
