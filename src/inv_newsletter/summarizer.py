@@ -19,6 +19,19 @@ logger = logging.getLogger(__name__)
 
 last_usage: dict = {}  # populated by summarize_daily with {input_tokens, output_tokens, stop_reason}
 
+# Single source of truth for digest top-level section order. The prompt asks the LLM
+# to follow this order but it drifts intermittently — this list is enforced
+# deterministically post-generation in _reorder_sections.
+CANONICAL_SECTIONS = [
+    "AI 模型与平台",
+    "宏观与市场",
+    "半导体与硬件",
+    "互联网与数字广告",
+    "软件与SaaS",
+    "其他",
+    "本周关注",
+]
+
 # Per-million-token USD prices (Anthropic public pricing). Update if pricing changes.
 _PRICE_PER_MTOK = {
     "opus":   (15.00, 75.00),
@@ -281,6 +294,9 @@ def summarize_daily(
         # Copy referenced images to date subdir and replace IMG_XX with relative paths
         digest = _embed_images(digest, img_map, img_dir, target_date)
 
+        # Enforce canonical top-level section order (LLM drifts despite prompt)
+        digest = _reorder_sections(digest)
+
         output_path.write_text(digest, encoding="utf-8")
     logger.info(f"Digest written to {output_path}")
 
@@ -289,6 +305,45 @@ def summarize_daily(
     if report:
         print(report)
     return output_path
+
+
+def _norm_section_title(s: str) -> str:
+    return re.sub(r"[\s\W_]+", "", s).lower()
+
+
+def _reorder_sections(digest: str) -> str:
+    """Reorder top-level ## sections per CANONICAL_SECTIONS.
+
+    Sections not in the canonical list are inserted between '软件与SaaS' and '其他'
+    (preserves their relative order). Preamble (H1 + any pre-section text) is kept on top.
+    """
+    lines = digest.split("\n")
+    section_starts = [i for i, l in enumerate(lines) if l.startswith("## ")]
+    if len(section_starts) < 2:
+        return digest
+
+    preamble = "\n".join(lines[: section_starts[0]]).rstrip()
+
+    sections: list[tuple[str, str]] = []
+    for idx, start in enumerate(section_starts):
+        end = section_starts[idx + 1] if idx + 1 < len(section_starts) else len(lines)
+        title = lines[start][3:].strip()
+        body = "\n".join(lines[start:end]).rstrip()
+        sections.append((title, body))
+
+    canon_norm = [_norm_section_title(t) for t in CANONICAL_SECTIONS]
+    unknown_anchor = canon_norm.index(_norm_section_title("其他"))
+
+    def rank(title: str) -> tuple[int, int]:
+        norm = _norm_section_title(title)
+        if norm in canon_norm:
+            return (canon_norm.index(norm), 0)
+        return (unknown_anchor, -1)  # before "其他", after "软件与SaaS"
+
+    sections.sort(key=lambda x: rank(x[0]))
+
+    parts = [preamble] + [s[1] for s in sections]
+    return "\n\n".join(p for p in parts if p) + "\n"
 
 
 def _print_sources(emails: list[dict], meritco_entries: list[dict]) -> None:
