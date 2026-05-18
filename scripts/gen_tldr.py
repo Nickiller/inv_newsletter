@@ -1,31 +1,31 @@
 #!/usr/bin/env python3
-"""Stage-2 TL;DR generator — generates `## 今日要点` from a finished digest.
-
-This is the two-stage architecture test harness:
-  Stage 1 (existing): main_digest call generates sectors only
-  Stage 2 (this script): single LLM call extracts TL;DR from rendered draft
+"""Stage-2 TL;DR generator — thin CLI wrapper around inv_newsletter.tldr.
 
 Usage:
     uv run scripts/gen_tldr.py --digest output/daily/2026-05-18_daily_digest.md
-    uv run scripts/gen_tldr.py --digest <path> --model claude-opus-4-7
+    uv run scripts/gen_tldr.py --digest <path> --model claude-sonnet-4-6
     uv run scripts/gen_tldr.py --digest <path> --write   # prepend into the file
 """
 from __future__ import annotations
 
 import argparse
-import os
-import re
 import sys
-import time
 from pathlib import Path
 
-import anthropic
 from dotenv import load_dotenv
 
-load_dotenv(override=True)
+# Allow `python scripts/gen_tldr.py` to find the local src/ package without install.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-TLDR_PROMPT_PATH = Path(__file__).resolve().parents[1] / "src/inv_newsletter/prompts/tldr.md"
-TLDR_HEADER_RE = re.compile(r"^## 今日要点\s*\n.*?(?=^## |\Z)", re.MULTILINE | re.DOTALL)
+from inv_newsletter.tldr import (  # noqa: E402
+    TLDR_DEFAULT_MODEL,
+    TLDR_PROMPT_PATH,
+    generate_tldr,
+    prepend_tldr,
+    strip_existing_tldr,
+)
+
+load_dotenv(override=True)
 
 
 def _price_estimate(model: str, in_tok: int, out_tok: int) -> float:
@@ -40,58 +40,12 @@ def _price_estimate(model: str, in_tok: int, out_tok: int) -> float:
     return 0.0
 
 
-def strip_existing_tldr(digest_md: str) -> str:
-    """Remove any existing `## 今日要点` section (until next `## `)."""
-    return TLDR_HEADER_RE.sub("", digest_md, count=1).lstrip()
-
-
-def generate_tldr(digest_body: str, model: str, prompt_text: str) -> tuple[str, dict]:
-    """Call Claude with tldr prompt + digest body. Returns (tldr_md, usage_dict)."""
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY not set")
-    base_url = os.environ.get("ANTHROPIC_BASE_URL")
-    client = anthropic.Anthropic(api_key=api_key, base_url=base_url)
-
-    user_msg = (
-        f"<digest>\n{digest_body.strip()}\n</digest>\n\n"
-        "上方 <digest> 是一份当日已完成的投研 digest。请按 system prompt 抽取 `## 今日要点` 速读块。"
-    )
-
-    t0 = time.perf_counter()
-    chunks: list[str] = []
-    with client.messages.stream(
-        model=model,
-        max_tokens=4000,
-        system=[{"type": "text", "text": prompt_text}],
-        messages=[{"role": "user", "content": user_msg}],
-    ) as stream:
-        for txt in stream.text_stream:
-            chunks.append(txt)
-        final = stream.get_final_message()
-    duration = time.perf_counter() - t0
-
-    text = "".join(chunks).strip()
-    # Strip ```markdown fences if model added them
-    text = re.sub(r"^```(?:markdown)?\s*\n?", "", text)
-    text = re.sub(r"\n?```\s*$", "", text)
-    text = text.strip()
-
-    usage = {
-        "input_tokens": getattr(final.usage, "input_tokens", 0) or 0,
-        "output_tokens": getattr(final.usage, "output_tokens", 0) or 0,
-        "duration_sec": duration,
-        "stop_reason": final.stop_reason,
-    }
-    return text, usage
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--digest", required=True, type=Path,
                         help="Path to digest .md file (e.g. output/daily/2026-05-18_daily_digest.md)")
-    parser.add_argument("--model", default="claude-opus-4-7",
-                        help="Model ID (default: claude-opus-4-7; try claude-sonnet-4-6 for cheaper)")
+    parser.add_argument("--model", default=TLDR_DEFAULT_MODEL,
+                        help=f"Model ID (default: {TLDR_DEFAULT_MODEL}; try claude-sonnet-4-6 for cheaper)")
     parser.add_argument("--prompt-file", type=Path, default=TLDR_PROMPT_PATH,
                         help=f"TL;DR system prompt (default: {TLDR_PROMPT_PATH})")
     parser.add_argument("--write", action="store_true",
@@ -129,22 +83,8 @@ def main() -> int:
     print(tldr_text)
 
     if args.write:
-        # Insert after H1 (# Daily Research Digest ...), before first ## section
-        lines = digest_md.split("\n")
-        # Strip existing tldr first
-        digest_md_clean = strip_existing_tldr(digest_md)
-        lines_clean = digest_md_clean.split("\n")
-        insert_idx = 0
-        for i, ln in enumerate(lines_clean):
-            if ln.startswith("## "):
-                insert_idx = i
-                break
-        new_lines = (
-            lines_clean[:insert_idx]
-            + [tldr_text.strip(), ""]
-            + lines_clean[insert_idx:]
-        )
-        args.digest.write_text("\n".join(new_lines), encoding="utf-8")
+        updated = prepend_tldr(digest_md, tldr_text)
+        args.digest.write_text(updated, encoding="utf-8")
         print(f"\n📝 Wrote updated digest with TL;DR prepended → {args.digest}", file=sys.stderr)
 
     return 0

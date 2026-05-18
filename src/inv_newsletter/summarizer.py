@@ -14,6 +14,7 @@ import anthropic
 import yaml
 
 from .timing import get_timer
+from .tldr import TLDR_DEFAULT_MODEL, generate_tldr, prepend_tldr
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +136,7 @@ def summarize_daily(
     meritco_days: int = 3,
     filename_suffix: str = "",
     prompt_file: Path | None = None,
+    tldr_model: str = TLDR_DEFAULT_MODEL,
 ) -> Path:
     """Load emails for a date, call Claude API, write digest. Returns output path.
 
@@ -297,6 +299,38 @@ def summarize_daily(
         # Enforce canonical top-level section order (LLM drifts despite prompt)
         digest = _reorder_sections(digest)
 
+    # Stage-2 TL;DR: extract `## 今日要点` from the rendered draft (separate LLM call).
+    # Cheaper than asking stage-1 to synthesize across 90k of raw email noise, and
+    # produces a TL;DR grounded in the actually-shipped digest body.
+    logger.info(f"Generating stage-2 TL;DR ({tldr_model})...")
+    t_tldr_start = time.perf_counter()
+    try:
+        tldr_text, tldr_usage = generate_tldr(digest, model=tldr_model, client=client)
+        tldr_duration = time.perf_counter() - t_tldr_start
+        logger.info(
+            f"Stage-2 TL;DR: {tldr_usage['input_tokens']} in / {tldr_usage['output_tokens']} out "
+            f"tokens, {tldr_duration:.1f}s, stop_reason: {tldr_usage['stop_reason']}"
+        )
+        _run_usage.append({
+            "model": tldr_model,
+            "input_tokens": tldr_usage["input_tokens"],
+            "output_tokens": tldr_usage["output_tokens"],
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+        })
+        timer.record_llm_call(
+            "stage2_tldr",
+            model=tldr_model,
+            duration_sec=tldr_duration,
+            tokens_in=tldr_usage["input_tokens"],
+            tokens_out=tldr_usage["output_tokens"],
+            stop_reason=tldr_usage["stop_reason"],
+        )
+        digest = prepend_tldr(digest, tldr_text)
+    except Exception as e:
+        logger.warning(f"Stage-2 TL;DR failed, publishing without TL;DR: {e}")
+
+    with timer.phase("write_output", "cpu"):
         output_path.write_text(digest, encoding="utf-8")
     logger.info(f"Digest written to {output_path}")
 

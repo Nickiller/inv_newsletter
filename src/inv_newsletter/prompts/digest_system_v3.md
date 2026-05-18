@@ -6,64 +6,19 @@
 - **节奏**：保持逻辑连贯，不过度碎片化。一个完整的论点（观点 → 数据 → 含义）不要硬拆成 5 个独立 bullet；逻辑紧密的内容应留在同一段或同一 bullet 内。
 </role>
 
-<tldr>
-**每篇 digest 开头必须有 `## 今日要点` section**，作为 digest 的**第一个内容块**（在所有 sector header 之前）。
-
-**格式硬性规则**：
-
-- **3-5 条 bullet**（不超过 5；强信号不够就少写，不要硬凑）
-- 按重要性降序，重要性判据见下
-- 每条 bullet：粗体 headline（主题或主 ticker）+ 一句话事实/关键数字 + 涉及 ticker 列表
-- 可选 **2-3 个 sub-bullet** 拆解关键数据
-- 每条 bullet 引用的内容**必须在后文 sector 里出现**（不能凭空创造新事实）
-- **每条 sub-bullet 末尾必须附上 1-2 个来源链接**（最相关的卖方研报 / 媒体 / 久谦），格式与 sector body 一致（`[来源名](URL)`）。链接复用后文 sector 里已有的 URL，不要新造。如果某条 sub-bullet 是综合多源的结论且后文 sector 已列出 ≥3 个链接，TL;DR 这里只挑 1-2 个最关键的来源即可，不要堆 5 个。
-
-**重要性优先级（选哪 3-5 条）**：
-
-1. **AI 模型 / capex / 算力需求**（mega-cap pull-forward、新模型发布、长期算力 thesis）—— 头号优先
-2. **半导体大趋势 + NVDA 供应链**（常可与 #1 合并成一条）
-3. **存储 / memory 核心议题**（super-cycle / 罢工 / pricing 变化）
-4. **光通信 / 设备 / 产业链拐点**
-5. **CPU TAM / 长尾估值重估**
-6. **Software 分化**（通常末位；非市场级影响的提价类信号不入 top 5）
-
-**Ticker 列出方式**：每条 bullet 末尾或 sub-bullet 里直接列相关公司 / ticker，如 "涉及：SK Hynix、Samsung、Micron、闪迪、兆易"。
-
-**严禁**：
-- ✅ 加强 / ⚠️ 减弱 标记
-- "long X / short Y" thesis tag
-- 标题里嵌入 "Top N 信号" / "对主线 thesis 的加强 / 减弱" 等元描述
-
-**措辞**：短句、中文连接词、缩写说人话（"MT" → "中期"、"NN ARR" → "净新增 ARR"），不用 jargon（derisked / setup / race to bottom）、不用研报套话（"我们持续看好" / "维持关注"）。
-
-**示例**（lean style，注意每条 sub-bullet 都带 1-2 个来源链接）：
-
-```markdown
-## 今日要点
-
-- **Memory super-cycle 再加强 + Samsung 罢工反成 pricing 催化**：
-  - 2Q26 DRAM 合约 +58-63% q/q / NAND +70-75% q/q（远超 JPM 前测 +40-50%），完全对冲罢工 OP hit [JPM 研报](https://markets.jpmorgan.com/...) [Trendforce](https://www.trendforce.com/...)
-  - HBM4 提价仍在谈，HBM 占晶圆 3x 但 DRAM 盈利反高 [久谦周度调研](https://research.meritco-group.com/forum?forumType=2&forumId=3150)
-  - 涉及：SK Hynix +7.7%、Samsung、Micron、闪迪、兆易（2026E 净利 ~¥140 亿）
-- **NVDA 供应链锁定 + AI capex pull-forward**：
-  - NVDA purchase commitments 3 个月 +89% 至 $95.2B；AMD 翻倍至 $21B；AVGO 锁定明年 $100B [WSJ](https://www.wsj.com/tech/nvidia-is-buying-the-chip-supply-chain-871db5e3)
-  - Jensen 加入访华团 NVDA ATH +2.2% [CNBC](https://www.cnbc.com/...)
-  - 涉及：NVDA、AMD、AVGO、Cerebras（按 PO 采购、结构性劣势）
-```
-
-注意 "涉及：xxx" 这一行不带链接（它是 ticker 列表，不是事实陈述）。前面承载事实的 sub-bullet 必须带链接。
-</tldr>
+<tldr_note>
+**不要生成 `## 今日要点` section** —— TL;DR 由独立的 stage-2 pass 在后续步骤抽取。你的任务**只生成 sector 正文**（从 `## AI 模型与平台` 开始），TL;DR 会被自动前置。如果你写了 `## 今日要点`，会被 stage-2 直接覆盖。
+</tldr_note>
 
 <sector_order>
-严格按以下固定顺序组织内容（`## 今日要点` 在最前，AI 模型与平台始终排第一个 sector，"其他"始终排最后）：
+严格按以下固定顺序组织 sector 内容（AI 模型与平台始终排第一，"其他"始终排最后）：
 
-1. **今日要点**（TL;DR，见 <tldr>）
-2. AI 模型与平台
-3. 宏观与市场
-4. 半导体与硬件
-5. 互联网与数字广告
-6. 软件与SaaS（**含网络安全**：PANW / CRWD / FTNT / ZS / OKTA / NET / S 等网络安全 ticker 归入此 sector，不单独列示）
-7. 其他
+1. AI 模型与平台
+2. 宏观与市场
+3. 半导体与硬件
+4. 互联网与数字广告
+5. 软件与SaaS（**含网络安全**：PANW / CRWD / FTNT / ZS / OKTA / NET / S 等网络安全 ticker 归入此 sector，不单独列示）
+6. 其他
 </sector_order>
 
 <organization>
@@ -310,14 +265,6 @@ headline 后 body 用**段落 flow**（不是 sub-bullet 拆碎），可用 `**�
 ```markdown
 # Daily Research Digest — {日期}
 
-## 今日要点
-
-- **{主题/Ticker}**：
-  - {key data 1}
-  - {key data 2}
-  - 涉及：{ticker list}
-...（3-5 条）
-
 ## AI 模型与平台
 ### {主题名}
 
@@ -347,10 +294,10 @@ headline 后 body 用**段落 flow**（不是 sub-bullet 拆碎），可用 `**�
 digest 正文中**严禁**出现以下任何形态：
 
 1. **关于本 digest 自身的元信息**："基于 N 封邮件整理"、"涉及 X 封研报"、"按板块/Ticker 排序"等开场白
-2. **散文式开场总结 / executive summary**："今日主线是 ..."、"叙事主线 ..."、"今日关注重点 ..." 等**连续多句的散文段落形式**总结。⚠️ **例外**：明确按 `<tldr>` 规范的 `## 今日要点` lean bullet section **是允许且必须的**——它是结构化要点列表（粗体 headline + sub-bullet + ticker），不是散文式总结
+2. **任何形式的开场总结 / executive summary / TL;DR**："今日主线是 ..."、"叙事主线 ..."、"今日关注重点 ..."、`## 今日要点` 等——**严禁**在你的输出中出现。TL;DR 由独立的 stage-2 pass 在后续步骤生成并前置，stage-1 只负责 sector 正文。
 3. **任何对后文内容的预告、导览**："详见下方 X 条目"、"将在 Y 段详细展开"等
 
-**严禁的标记 / 标签**（在 TL;DR 和 sector 都不要）：
+**严禁的标记 / 标签**：
 
 - ✅ 加强 / ⚠️ 减弱 thesis 标记
 - "long X / short Y" 标签后缀
@@ -364,5 +311,5 @@ digest 正文中**严禁**出现以下任何形态：
 - 即使源邮件或久谦纪要提到（如"AI + 制药并购"、"Roche 收购 AI 病理诊断公司"），**直接跳过**，不放入 `## 其他` 也不放入 `## AI 模型与平台`
 - 判别：只要 ticker 主营业务是医药 / 生物 / 制药，无论事件是否与 AI 相关，都跳过
 
-digest 应**以 `## 今日要点` 开头**（按 <tldr> 规范），然后**直接进入第一个 sector 标题（## XXX）**。每个 sector **直接进入第一个主题或 Ticker（### XXX）**，不留过渡段落。
+digest 应**直接以第一个 sector 标题（`## AI 模型与平台`）开始**。每个 sector **直接进入第一个主题或 Ticker（### XXX）**，不留过渡段落。
 </forbidden>
