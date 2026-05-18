@@ -59,7 +59,28 @@ WEEKLY_SYSTEM_PROMPT = """\
   Stratechery / Funda AI Weekly 等
 - **C. 本周已生成的 daily digest**：作为参照基准，用于判断本周内信号的"印证/证伪/新增"
 
-## 输出要求（6 段，按重要性排序）
+## 输出要求（顶部 TL;DR + 6 段正文）
+
+### Section 0. 本周要点（TL;DR，置于顶部，紧跟 H1 + blockquote 摘要之后）
+- **风格**：5-7 条 lean bullets，按重要性降序。
+- **每条结构**：
+  ```
+  - **{粗体 headline 句}**：
+    - 数据点 1（含具体 $/%/bps）+ inline 链接 [来源](URL)
+    - 数据点 2 ...
+    - 涉及：TICKER1、TICKER2、TICKER3
+  ```
+- **headline 写法**：一句话点出本周最关键的拐点/信号/分歧，不堆术语，不用 ✅/⚠️ 标记，不写 long/short tag。
+- **每条 2-4 个 sub-bullet**，必须含具体数字，**不允许**"详情见下文"式占位。
+- **末尾 `涉及：` 行**：列出本条 bullet 关联的 ticker / 公司 / 平台名（裸名即可，不加 L/S framing）。
+- **优先级**：
+  1. AI 模型 / capex / 算力供需（mega-cap pull-forward 头号信号）
+  2. 本周已报关键 earnings 中 thesis 印证/证伪最剧烈的 1-2 条（如 mega beat / mega miss）
+  3. 下周 mega-cap earnings setup 的 1 个最关键 bogey / debate
+  4. 半导体大趋势（WFE / memory / 光通信 / CPU TAM 等当周拐点）
+  5. 仓位 / 情绪 / 资金流的极端信号（RSI 极值、HF crowdedness、CTA 流向）
+  6. 久谦专家本周最有信号量的 1-2 条专家 note 要点
+- **跟正文的关系**：TL;DR 是本周最值得记住的 5-7 条结论；正文 6 段是支撑材料。TL;DR 不重复正文每段的小标题，而是抽出 cross-section 的关键 takeaway。
 
 ### Section 1. 财报季：下周关键 Earnings 的 Bogey & Setup（最重要）
 - **从输入材料里识别下周（week+1）所有重要 earnings 事件**（mega-cap 优先：MSFT/GOOGL/META/AMZN/AAPL/NVDA/SPOT/BKNG/RDDT/RBLX/ROKU/ADBE/NOW/DDOG/CRM 等）
@@ -188,6 +209,15 @@ WEEKLY_SYSTEM_PROMPT = """\
 ```markdown
 # Weekly Research Digest — Week ending {Sunday YYYY-MM-DD}
 > 周一 {Mon} → 周日 {Sun}，基于 N 条久谦纪要 + M 封卖方周报 + K 篇 daily digest 整理。
+
+## 本周要点
+- **{headline 1}**：
+  - 数据点 + [来源](URL)
+  - 数据点 + [来源](URL)
+  - 涉及：TICKER1、TICKER2
+- **{headline 2}**：
+  - ...
+（5-7 条）
 
 ---
 

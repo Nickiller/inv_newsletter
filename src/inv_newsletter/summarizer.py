@@ -122,7 +122,7 @@ CAPTION_CACHE_FILE = Path("data/.image_caption_cache.json")
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
 CAPTION_PROMPT = (_PROMPTS_DIR / "image_caption.md").read_text(encoding="utf-8").strip()
 
-SYSTEM_PROMPT = (_PROMPTS_DIR / "digest_system.md").read_text(encoding="utf-8")
+SYSTEM_PROMPT = (_PROMPTS_DIR / "digest_system_v3.md").read_text(encoding="utf-8")
 
 
 def summarize_daily(
@@ -139,7 +139,7 @@ def summarize_daily(
     """Load emails for a date, call Claude API, write digest. Returns output path.
 
     prompt_file: optional override for the system prompt. Defaults to
-    prompts/digest_system.md (loaded as SYSTEM_PROMPT at module import).
+    prompts/digest_system_v3.md (loaded as SYSTEM_PROMPT at module import).
     """
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:

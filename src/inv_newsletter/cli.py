@@ -62,7 +62,7 @@ def main():
     parser.add_argument("--suffix", default="",
                         help="Filename suffix appended before .md (e.g. '_v2'). Avoids overwriting existing digests during prompt A/B comparison.")
     parser.add_argument("--prompt-file", default=None,
-                        help="Path to alternative system prompt .md (default: prompts/digest_system.md). Used together with --suffix for A/B testing.")
+                        help="Path to alternative system prompt .md (default: prompts/digest_system_v3.md). Used together with --suffix for A/B testing.")
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
 
