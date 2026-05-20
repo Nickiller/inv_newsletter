@@ -5,9 +5,9 @@
 .browser_state_meritco/
 .browser_state_meritco_v2/
 
-# Data (large, sensitive, regeneratable)
-data/
-output/
+# Data (large, sensitive, regeneratable) — root-only, not src/inv_newsletter/data/
+/data/
+/output/
 
 # Python
 __pycache__/

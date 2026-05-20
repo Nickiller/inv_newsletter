@@ -26,4 +26,4 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-inv_newsletter = ["prompts/*.md"]
+inv_newsletter = ["prompts/*.md", "data/*.yaml"]

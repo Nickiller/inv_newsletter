@@ -1,0 +1,414 @@
+# Sector / Industry / Ticker 分类权威表（single source of truth）
+#
+# 设计原则：
+# - YAML 中的出现顺序 = digest 中的 canonical display order（sector 和 industry 都是）
+# - 每个 ticker 一个 primary sector/industry。LLM 仍可在其他 section 引用该 ticker（如
+#   GOOGL 主分类为互联网，但在 AI 模型与平台讨论 Gemini 时可被提及），post-process 不
+#   把这种跨 section 提及当作 drift（只 log 不阻断）。
+# - 边界决策记录在 `notes` 字段，避免下次又靠记忆判断。
+# - 添加新 ticker 时只需在对应 industry 下追加一行；新 industry 在对应 sector 内追加；
+#   新 sector 调整顶层顺序即可。
+
+version: 1
+
+sectors:
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: AI 模型与平台
+    description: 基础模型实验室、AI Coding/Agent、AI infra 平台层
+    industries:
+      - name: Foundation Models
+        description: 主营即前沿大模型的实验室 / 公司。Hyperscaler 的 AI 部门（GOOGL/META/MSFT/BABA）归其主营 sector，AI 主题通过 aliases (Gemini/Llama/Copilot/Qwen) 触发命中。
+        tickers:
+          - { ticker: ANTH, company: Anthropic, aliases: [Claude] }
+          - { ticker: OAI, company: OpenAI, aliases: [ChatGPT, GPT] }
+          - { ticker: DEEPSEEK, company: DeepSeek, aliases: [深度求索] }
+          - { ticker: XAI, company: xAI, aliases: [Grok] }
+          - {
+              ticker: BYTEDANCE,
+              company: ByteDance,
+              aliases: [字节跳动, 字节, Doubao, 豆包, SeeDance],
+            }
+
+      - name: AI Coding / Agent
+        description: AI 编程与 Agent 框架（独立创业公司或产品维度）
+        tickers:
+          - { ticker: CURSOR, company: Cursor (Anysphere) }
+          - { ticker: WINDSURF, company: Windsurf (Codeium) }
+          - { ticker: REPLIT, company: Replit }
+
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: 宏观与市场
+    description: 宏观数据、利率/汇率/大宗、指数/板块 ETF/大盘技术面、Factor / Momentum / Rotation、仓位/资金流/Sentiment、地缘/政策/关税、加密宏观、IPO/一级市场。允许 theme-led `### XXX` 标题，不必每条都有 ticker。
+    industries:
+      - name: 指数 / 板块 ETF / 大盘技术面
+        description: 大盘指数、板块 ETF、跨市场技术面（成交量、HSD/LDD 名单、52 周高位分布、隔夜亚洲）
+        tickers:
+          - { ticker: SOXX, company: iShares 半导体 ETF }
+          - { ticker: IGV, company: iShares 软件 ETF }
+          - { ticker: SMH, company: VanEck 半导体 ETF }
+          - { ticker: KOSPI, company: 韩国综合指数 }
+          - { ticker: NDX, company: 纳斯达克 100 }
+          - { ticker: SPX, company: S&P 500 }
+          - { ticker: VIX, company: 波动率指数 }
+
+      - name: 利率 / 汇率 / 大宗
+        description: 10/30 年期收益率、美元 / JPY / CNY、原油、铜、黄金、稀土等大宗商品价格与影响
+        tickers: []
+
+      - name: Factor / Momentum / Rotation
+        description: Tech Momentum factor、板块轮动（Software vs Semis、Infra+Cyber > Apps）、cross-sector factor unwind、行业内 leadership 变化
+        tickers: []
+
+      - name: 仓位 / 资金流 / Sentiment
+        description: HF positioning（JPM Sentiment Matrix、Goldman Prime Book）、ETF 资金流、long/short crowding、buyside positioning 评分
+        tickers: []
+
+      - name: 地缘 / 政策 / 关税
+        description: 关税与豁免、出口管制、制裁（如 Iran/俄罗斯）、中美会谈、国内补贴政策（IRA、半导体法案）
+        tickers: []
+
+      - name: 加密与数字资产宏观
+        description: 加密资产宏观叙事（个股标的 COIN/HOOD 归 互联网/Fintech；MSTR/CRCL 归 互联网/Fintech）
+        tickers:
+          - { ticker: BTC, company: Bitcoin }
+          - { ticker: ETH, company: Ethereum }
+
+      - name: IPO / 一级市场
+        description: 准上市公司与一级市场（SpaceX、Cerebras、Klarna 等）、即将上市定价节奏、私募估值轮变化
+        tickers: []
+
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: 半导体与硬件
+    description: 半导体、AI 算力、网络/光通信、硬件 OEM/ODM
+    industries:
+      - name: GPU / AI 加速器
+        tickers:
+          - {
+              ticker: NVDA,
+              company: NVIDIA,
+              aliases:
+                [
+                  英伟达,
+                  Blackwell,
+                  Hopper,
+                  GB200,
+                  GB300,
+                  H100,
+                  H200,
+                  B100,
+                  B200,
+                ],
+            }
+          - {
+              ticker: AMD,
+              company: AMD,
+              aliases: [MI300, MI350, MI400, Instinct],
+            }
+          - {
+              ticker: INTC,
+              company: Intel,
+              aliases: [Gaudi],
+              notes: "也出现在 晶圆代工/Foundry（IFS）",
+            }
+
+      - name: 晶圆代工 / Foundry
+        tickers:
+          - { ticker: TSM, company: TSMC, aliases: [台积电, TSMC] }
+          - { ticker: GFS, company: GlobalFoundries }
+          - { ticker: UMC, company: 联电 }
+          - { ticker: SMIC, company: 中芯国际, aliases: [中芯] }
+
+      - name: 存储 (DRAM / NAND / HBM)
+        tickers:
+          - { ticker: MU, company: Micron, aliases: [美光] }
+          - {
+              ticker: SK_HYNIX,
+              company: SK Hynix,
+              aliases: [SK Hynix, Hynix, 海力士],
+            }
+          - {
+              ticker: SAMSUNG,
+              company: Samsung,
+              aliases: [三星, Samsung Electronics],
+            }
+          - { ticker: SNDK, company: SanDisk / 西部数据存储事业 }
+          - { ticker: KIOXIA, company: Kioxia, aliases: [铠侠] }
+
+      - name: 网络 / 光通信 / AI 连接
+        description: AI 数据中心网络、光模块、ASIC 连接
+        tickers:
+          - { ticker: ANET, company: Arista Networks }
+          - {
+              ticker: AVGO,
+              company: Broadcom,
+              aliases: [博通],
+              notes: "AI ASIC + 网络芯片；非纯 AI 加速器分类于此",
+            }
+          - { ticker: MRVL, company: Marvell }
+          - { ticker: CRDO, company: Credo }
+          - { ticker: COHR, company: Coherent }
+          - { ticker: LITE, company: Lumentum }
+          - { ticker: CIEN, company: Ciena }
+          - { ticker: ALAB, company: Astera Labs }
+
+      - name: 先进 AI 算力 / GPU 云
+        description: AI 训练/推理云服务（区别于一般 hyperscaler，主营即 GPU 容量）
+        tickers:
+          - { ticker: CRWV, company: CoreWeave }
+          - { ticker: NBIS, company: Nebius }
+          - { ticker: IREN, company: IREN, notes: "原矿企转 AI 算力" }
+
+      - name: 模拟 / 混合信号
+        tickers:
+          - { ticker: TXN, company: Texas Instruments }
+          - { ticker: ADI, company: Analog Devices }
+          - { ticker: NXPI, company: NXP }
+          - { ticker: MCHP, company: Microchip }
+          - { ticker: "ON", company: onsemi }
+          - { ticker: STM, company: STMicroelectronics }
+          - { ticker: IFX, company: Infineon }
+          - { ticker: MPI, company: Monolithic Power }
+
+      - name: 半导体设备
+        tickers:
+          - { ticker: AMAT, company: Applied Materials }
+          - { ticker: ASML, company: ASML }
+          - { ticker: LRCX, company: Lam Research }
+          - { ticker: KLAC, company: KLA }
+          - { ticker: TER, company: Teradyne }
+
+      - name: 硬件 / 服务器 / 终端
+        tickers:
+          - { ticker: AAPL, company: Apple, aliases: [苹果] }
+          - { ticker: ARM, company: Arm Holdings }
+          - { ticker: QCOM, company: Qualcomm, aliases: [高通] }
+          - { ticker: DELL, company: Dell }
+          - { ticker: HPE, company: Hewlett Packard Enterprise }
+          - { ticker: SMCI, company: Super Micro }
+          - { ticker: FLEX, company: Flex }
+          - { ticker: CLS, company: Celestica }
+          - { ticker: GLW, company: Corning }
+
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: 互联网与数字广告
+    description: 大型互联网平台、广告、电商、流媒体、出行/外卖、社交
+    industries:
+      - name: 大型互联网平台
+        tickers:
+          - {
+              ticker: GOOGL,
+              company: Alphabet/Google,
+              aliases: [谷歌, Alphabet, Gemini, DeepMind, TPU, Bard, Veo],
+              notes: "主分类在此；AI 产品（Gemini/DeepMind/TPU/Veo）讨论时可改放 AI 模型与平台 / Foundation Models",
+              also_in: [{ sector: "AI 模型与平台", industry: "Foundation Models" }],
+            }
+          - {
+              ticker: META,
+              company: Meta,
+              aliases: [Facebook, Instagram, WhatsApp, Llama, FAIR],
+              notes: "主分类在此；AI 产品（Llama/FAIR）讨论时可改放 AI 模型与平台 / Foundation Models",
+              also_in: [{ sector: "AI 模型与平台", industry: "Foundation Models" }],
+            }
+          - {
+              ticker: AMZN,
+              company: Amazon,
+              aliases: [亚马逊, AWS, Bedrock, Trainium, Inferentia],
+              notes: "主分类在此；AI 产品（Bedrock/Trainium）讨论时可改放 AI 模型与平台 / Foundation Models",
+              also_in: [{ sector: "AI 模型与平台", industry: "Foundation Models" }],
+            }
+          - {
+              ticker: BABA,
+              company: 阿里巴巴,
+              aliases: [Alibaba, Qwen, 通义千问],
+              notes: "主分类在此；AI 产品（Qwen/通义）讨论时可改放 AI 模型与平台 / Foundation Models",
+              also_in: [{ sector: "AI 模型与平台", industry: "Foundation Models" }],
+            }
+          - { ticker: JD, company: 京东 }
+
+      - name: 流媒体 / 内容
+        tickers:
+          - { ticker: NFLX, company: Netflix, aliases: [奈飞] }
+          - { ticker: SPOT, company: Spotify }
+          - { ticker: ROKU, company: Roku }
+          - { ticker: DIS, company: Disney, aliases: [迪士尼] }
+          - { ticker: WBD, company: Warner Bros Discovery }
+          - { ticker: CMCSA, company: Comcast / NBCUniversal }
+          - { ticker: LYV, company: Live Nation }
+          - { ticker: PSKY, company: Paramount Skydance }
+          - { ticker: UMG, company: Universal Music Group }
+
+      - name: 社交 / UGC
+        tickers:
+          - { ticker: SNAP, company: Snap }
+          - { ticker: RDDT, company: Reddit }
+          - { ticker: PINS, company: Pinterest }
+          - { ticker: MTCH, company: Match Group }
+
+      - name: Adtech
+        tickers:
+          - { ticker: TTD, company: The Trade Desk }
+          - { ticker: APP, company: AppLovin }
+
+      - name: 电商
+        tickers:
+          - { ticker: SHOP, company: Shopify }
+          - { ticker: EBAY, company: eBay }
+          - { ticker: ETSY, company: Etsy }
+          - { ticker: MELI, company: MercadoLibre }
+          - { ticker: CART, company: Instacart / Maplebear }
+          - { ticker: CPNG, company: Coupang }
+
+      - name: 出行 / 外卖 / 旅行
+        tickers:
+          - { ticker: UBER, company: Uber }
+          - { ticker: LYFT, company: Lyft }
+          - { ticker: DASH, company: DoorDash }
+          - { ticker: ABNB, company: Airbnb }
+          - { ticker: BKNG, company: Booking }
+          - { ticker: EXPE, company: Expedia }
+
+      - name: 游戏
+        tickers:
+          - { ticker: TTWO, company: Take-Two Interactive }
+          - { ticker: RBLX, company: Roblox }
+          - { ticker: EA, company: Electronic Arts }
+
+      - name: Fintech / 数字金融
+        description: 偏 consumer / 互联网形态的金融科技；纯 SaaS 见软件板块
+        tickers:
+          - { ticker: HOOD, company: Robinhood }
+          - { ticker: COIN, company: Coinbase }
+          - { ticker: PYPL, company: PayPal }
+          - { ticker: SQ, company: Block / Square }
+          - { ticker: CRCL, company: Circle }
+
+      - name: 其他互联网
+        tickers:
+          - { ticker: CVNA, company: Carvana }
+          - { ticker: DUOL, company: Duolingo }
+
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: 软件与SaaS
+    description: 企业软件、SaaS、网络安全、DevOps、垂直 SaaS（不单独切出网络安全板块）
+    industries:
+      - name: 平台型 / 大盘软件
+        tickers:
+          - {
+              ticker: MSFT,
+              company: Microsoft,
+              aliases: [微软, Copilot, "Azure OpenAI", Azure],
+              notes: "主分类在此；AI 产品（Copilot/Azure OpenAI）讨论时可改放 AI 模型与平台 / Foundation Models",
+              also_in: [{ sector: "AI 模型与平台", industry: "Foundation Models" }],
+            }
+          - {
+              ticker: ORCL,
+              company: Oracle,
+              aliases: [OCI],
+              notes: "OCI 是 AI infra 主题，但公司主分类在软件",
+            }
+          - { ticker: SAP, company: SAP }
+          - { ticker: CRM, company: Salesforce, aliases: [Agentforce] }
+          - { ticker: NOW, company: ServiceNow }
+          - { ticker: IBM, company: IBM }
+          - { ticker: ADBE, company: Adobe }
+          - { ticker: INTU, company: Intuit }
+
+      - name: Data Infra
+        tickers:
+          - { ticker: SNOW, company: Snowflake }
+          - { ticker: DDOG, company: Datadog }
+          - { ticker: MDB, company: MongoDB }
+          - { ticker: DT, company: Dynatrace }
+          - { ticker: ESTC, company: Elastic }
+
+      - name: 网络安全
+        description: 全部网络安全 ticker 集中于此 industry，不另起 sector
+        tickers:
+          - { ticker: PANW, company: Palo Alto Networks }
+          - { ticker: CRWD, company: CrowdStrike }
+          - { ticker: FTNT, company: Fortinet }
+          - { ticker: ZS, company: Zscaler }
+          - { ticker: OKTA, company: Okta }
+          - { ticker: NET, company: Cloudflare }
+          - { ticker: S, company: SentinelOne }
+          - { ticker: TENB, company: Tenable }
+          - { ticker: RBRK, company: Rubrik }
+          - { ticker: CVLT, company: Commvault }
+          - { ticker: FIGR, company: Figure (security) }
+
+      - name: DevOps / 协作 / 设计
+        tickers:
+          - { ticker: TEAM, company: Atlassian }
+          - { ticker: GTLB, company: GitLab }
+          - { ticker: FROG, company: JFrog }
+          - { ticker: FIG, company: Figma }
+          - { ticker: ADSK, company: Autodesk }
+          - { ticker: ZM, company: Zoom }
+          - { ticker: TWLO, company: Twilio }
+
+      - name: 垂直 / 应用 SaaS
+        tickers:
+          - { ticker: HUBS, company: HubSpot }
+          - { ticker: WIX, company: Wix }
+          - { ticker: WDAY, company: Workday }
+          - { ticker: KVYO, company: Klaviyo }
+          - { ticker: TOST, company: Toast }
+          - { ticker: PCOR, company: Procore }
+          - { ticker: BILL, company: BILL Holdings }
+          - { ticker: PAYC, company: Paycom }
+          - { ticker: VERX, company: Vertex }
+          - { ticker: GTM, company: GTM (Brex 之类) }
+
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: 其他
+    description: 不属于以上五个 sector 的研究覆盖（电信、消费电子、稳定币、烟草等）
+    industries:
+      - name: 电信 / 通信运营商
+        tickers:
+          - { ticker: TMUS, company: T-Mobile }
+          - { ticker: VZ, company: Verizon }
+          - { ticker: T, company: AT&T }
+
+      - name: 消费电子 / 终端品牌
+        description: 消费电子品牌（非半导体上游）
+        tickers:
+          - {
+              ticker: SONY,
+              company: Sony,
+              aliases: [索尼],
+              notes: "图像传感器主题；半导体业务部分可在 半导体 内提及",
+            }
+          - { ticker: NTDOY, company: Nintendo, aliases: [任天堂] }
+
+      - name: 博彩
+        description: 体育博彩 / 线上博彩
+        tickers:
+          - { ticker: DKNG, company: DraftKings }
+          - { ticker: FLUT, company: Flutter Entertainment }
+
+      - name: 其他覆盖
+        tickers:
+          - {
+              ticker: TSLA,
+              company: Tesla,
+              aliases: [特斯拉],
+              notes: "覆盖较少、跨多主题；放 其他 兜底",
+            }
+
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: 本周关注
+    description: meta 板块，列下周催化剂、待跟踪事件；无 ticker 归属
+    industries: []
+
+# ─────────────────────────────────────────────────────────────────────────
+# Hard exclusions（与 prompt 的 <forbidden> 配合）
+# 这些主题/ticker 不应出现在 digest；保留在此供 audit 校验
+hard_excluded:
+  reasons:
+    - 医药 / 创新药 / 生物科技 / 健康险（与投研覆盖范围不符）
+  sectors:
+    - 医药
+    - 创新药
+    - 生物科技
+    - Biotech
+    - Healthcare
