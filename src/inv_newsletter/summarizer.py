@@ -105,6 +105,7 @@ def _format_cost_report() -> str:
     return "\n".join(lines)
 
 MIN_IMAGE_SIZE = 35 * 1024  # 35KB — skip logos/banners but keep small data charts
+MAX_IMAGE_SIZE = 1_500_000  # 1.5MB — skip oversize screenshots that break proxy streaming
 MAX_IMAGES_PER_EMAIL = 5  # 每封邮件最多 5 张图（图表多的邮件如 JPM Sentiment Monitor 需要更多额度）
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 MERITCO_URL_TEMPLATE = "https://research.meritco-group.com/forum?forumType=2&forumId={id}"
@@ -968,6 +969,9 @@ def _select_key_images(email_dir: Path, image_names: list[str]) -> list[dict]:
             continue
         size = path.stat().st_size
         if size < MIN_IMAGE_SIZE:
+            continue
+        if size > MAX_IMAGE_SIZE:
+            logger.info(f"Skipping oversize image {name} ({size/1e6:.1f}MB > {MAX_IMAGE_SIZE/1e6:.1f}MB)")
             continue
         selected.append({
             "path": path,
