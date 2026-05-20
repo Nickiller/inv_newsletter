@@ -316,15 +316,17 @@ def summarize_daily(
         # Enforce canonical top-level section order + industry-level ordering (LLM drifts despite prompt)
         digest = _reorder_sections(digest)
 
-        # Drift audit: detect ticker headings in the wrong sector + tickers not in taxonomy
+        # Drift audit: detect ticker headings in the wrong sector + tickers not in taxonomy.
+        # Findings go to logs/ only — never into the published digest.
         report = _drift_audit(digest)
         _write_drift_logs(report, target_date, Path("logs"))
-        digest = _append_audit_footer(digest, report, target_date)
         if report["misclassified"] or report["unmapped"]:
             logger.info(
                 f"Audit: misclassified={len(report['misclassified'])}, "
                 f"unmapped={len(report['unmapped'])} — see logs/"
             )
+        else:
+            logger.info("Audit: clean (no drift, no unmapped tickers)")
 
     # Stage-2 TL;DR: extract `## 今日要点` from the rendered draft (separate LLM call).
     # Cheaper than asking stage-1 to synthesize across 90k of raw email noise, and
@@ -648,36 +650,6 @@ def _write_drift_logs(report: dict, target_date: str, logs_dir: Path) -> None:
                     f"{target_date}\t{item['ticker']}\tfound_in={item['found_in']}\t"
                     f"heading={item['heading']}\n"
                 )
-
-
-def _append_audit_footer(digest: str, report: dict, target_date: str) -> str:
-    """Append an HTML-comment audit footer to the digest.
-
-    Invisible in Feishu / WeChat rendered output but visible in raw markdown
-    review. Lists counts + first few offenders inline so the eye-check is fast.
-    """
-    n_mis = len(report["misclassified"])
-    n_un = len(report["unmapped"])
-    if n_mis == 0 and n_un == 0:
-        return digest.rstrip() + "\n\n<!-- audit: clean (no drift, no unmapped tickers) -->\n"
-    lines = [
-        f"<!-- audit ({target_date}): misclassified={n_mis}, unmapped={n_un}"
-    ]
-    for item in report["misclassified"][:10]:
-        kind = item.get("kind", "ticker")
-        subject = _drift_subject(item)
-        lines.append(
-            f"  - drift ({kind}): {subject} in {item['found_in']} → expected {item['expected']} "
-            f"({item['heading']})"
-        )
-    if n_mis > 10:
-        lines.append(f"  - ... and {n_mis - 10} more (see logs/digest_drift.log)")
-    for item in report["unmapped"][:10]:
-        lines.append(f"  - unmapped: {item['ticker']} in {item['found_in']} ({item['heading']})")
-    if n_un > 10:
-        lines.append(f"  - ... and {n_un - 10} more (see logs/unmapped_tickers.log)")
-    lines.append("-->")
-    return digest.rstrip() + "\n\n" + "\n".join(lines) + "\n"
 
 
 def _print_sources(emails: list[dict], meritco_entries: list[dict]) -> None:
