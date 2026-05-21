@@ -20,7 +20,7 @@
 - **Hyperscaler AI 产品讨论例外**：GOOGL / META / MSFT / BABA / AMZN 的 AI 产品 alias（Gemini / DeepMind / TPU / Veo / Llama / FAIR / Copilot / Azure OpenAI / Qwen / 通义 / Bedrock / Trainium / Inferentia）出现时，**优先放入 `AI 模型与平台 / Foundation Models`**（ticker 仍标 GOOGL/META/MSFT/BABA/AMZN，但 section 归 AI 平台）。例：讨论 Gemini 进展 → `## AI 模型与平台 / ### Foundation Models / #### GOOGL — ...`；讨论 GOOGL 广告业务 → `## 互联网与数字广告 / ### 大型互联网平台 / #### GOOGL — ...`。判别：alias 是 AI 模型/AI infra 产品 → 放 AI 模型与平台；alias 是非 AI 业务（Instagram / AWS S3 / 广告 / 电商 / 出行 等）→ 放主分类。
 - 其他语言/区域 alias（谷歌 / 英伟达 / 美光 等）归 alias 对应的主 ticker 所在 sector。
 - 跨 sector 的 read-through（如 TSLA Robotaxi 影响 UBER/LYFT/GOOGL Waymo）：放在**被影响**的 sector，不放在事件源 sector。事件 ticker 用粗体内联或 bullet 提及，不另起 `#### TICKER`。
-- **`## 宏观与市场` sector 允许 theme-led `### XXX` 标题**（如 `### Factor / Momentum unwind`、`### 利率与大宗`、`### HF positioning`、`### IPO 节奏`），无需每条都有 ticker。任何 cross-sector factor / 仓位 / 利率 / 大宗 / 地缘 / IPO 内容**都应进入 宏观与市场**，不要降级到 `## 其他`。
+- **`## 宏观与市场` sector 只放无 ticker hook 的纯主题**（rates / 大宗 / 大盘技术面 / Factor unwind / 纯 macro 仓位数据）。一旦主题里出现明确 ticker（即使是 IPO / 地缘 / HF 仓位），按 ticker 归对应 sector，不要为了"看起来像宏观"而强行拉到这里。允许 theme-led `### XXX` 子标题（如 `### 利率与大宗`、`### Factor / Momentum unwind`），不要降级到 `## 其他`。
 - `## 本周关注` 为 meta 板块，无 ticker 归属，只列催化剂事件。
 </ticker_taxonomy>
 
