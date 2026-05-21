@@ -11,10 +11,10 @@ filters:
       - "JPM TECH SKETCH"
 
   - name: "Jefferies Tech"
+    # jfavuzza 是 Jefferies 分析师本人邮箱，只发 Jefferies Tech / Scoreboard 系列
+    # → 不加 keyword 过滤，避免 subject typo（如 "Jeffereis Tech"）误杀
     senders:
       - "jfavuzza@jefferies.com"
-    keywords:
-      - "Jefferies Tech"
 
   - name: "Jefferies While You Were Sleeping"
     # 转发自 shuang@etnalabs.co，原发件人 comara@jefferies.com
@@ -84,10 +84,10 @@ weekly_filters:
       - "Week Ahead"
 
   - name: "Jefferies Tech Sunday Scoreboard"
+    # 与 daily Jefferies Tech 共享 sender；daily rule 已捕获全部 jfavuzza 邮件
+    # 此 weekly group 保留为标识符，weekly mode 下不会重复（dedup by email ID）
     senders:
       - "jfavuzza@jefferies.com"
-    keywords:
-      - "Scoreboard"
 
   - name: "Stratechery Weekly"
     senders:

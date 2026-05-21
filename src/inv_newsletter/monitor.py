@@ -182,12 +182,15 @@ def _do_fetch_safe(config: AppConfig, base_dir: Path) -> int:
         browser = OutlookBrowser()
         client = OutlookClient(browser)
 
+        from inv_newsletter.config import email_matches_any_group
+
         emails = client.fetch_emails(
             senders=config.all_senders,
-            keywords=config.all_keywords or None,
-            exclude_keywords=config.all_exclude_keywords or None,
+            keywords=None,
+            exclude_keywords=None,
             hours_back=config.hours_back,
         )
+        emails = [e for e in emails if email_matches_any_group(e.subject, e.sender_address, config.filters)]
 
         for email in emails:
             if is_already_fetched(email.id, base_dir):

@@ -156,20 +156,22 @@ def _do_fetch(config, base_dir: Path, dry_run: bool):
     browser = OutlookBrowser()
     client = OutlookClient(browser)
 
+    from inv_newsletter.config import email_matches_any_group
+
     senders = config.all_senders
-    keywords = config.all_keywords or None
-    exclude_keywords = config.all_exclude_keywords or None
-    logger.info(f"Fetching emails: {len(senders)} senders, {len(keywords or [])} keywords, last {config.hours_back}h")
+    logger.info(f"Fetching emails: {len(senders)} senders, {len(config.filters)} filter groups (per-group keyword match), last {config.hours_back}h")
 
     timer = get_timer()
     with timer.phase("outlook_fetch", "cpu"):
         emails = client.fetch_emails(
             senders=senders,
-            keywords=keywords,
-            exclude_keywords=exclude_keywords,
+            keywords=None,
+            exclude_keywords=None,
             hours_back=config.hours_back,
         )
-    logger.info(f"Found {len(emails)} matching emails.")
+    before = len(emails)
+    emails = [e for e in emails if email_matches_any_group(e.subject, e.sender_address, config.filters)]
+    logger.info(f"Found {len(emails)} matching emails (per-group filter dropped {before - len(emails)}).")
 
     if dry_run:
         print(f"\n{'='*60}")
@@ -228,16 +230,12 @@ def _do_weekly(config, base_dir: Path, week_end_str: str | None):
     logger.info(f"Weekly window: {week_start} → {week_end}")
 
     # Step 1: fetch weekly emails
+    from inv_newsletter.config import email_matches_any_group
+
     weekly_senders = []
-    weekly_keywords = []
-    weekly_exclude = []
     for fg in config.weekly_filters:
         weekly_senders.extend(fg.senders)
-        weekly_keywords.extend(fg.keywords)
-        weekly_exclude.extend(fg.exclude_keywords)
     weekly_senders = list(set(weekly_senders))
-    weekly_keywords = list(set(weekly_keywords)) or None
-    weekly_exclude = list(set(weekly_exclude)) or None
 
     base_dir.mkdir(parents=True, exist_ok=True)
     browser = OutlookBrowser()
@@ -247,16 +245,18 @@ def _do_weekly(config, base_dir: Path, week_end_str: str | None):
     now_utc = datetime.utcnow()
     monday_utc = datetime.combine(week_start, datetime.min.time())
     hours_back = max(int((now_utc - monday_utc).total_seconds() / 3600) + 12, 24)
-    logger.info(f"Fetching weekly emails: {len(weekly_senders)} senders, last {hours_back}h")
+    logger.info(f"Fetching weekly emails: {len(weekly_senders)} senders, {len(config.weekly_filters)} filter groups, last {hours_back}h")
 
     emails = client.fetch_emails(
         senders=weekly_senders,
-        keywords=weekly_keywords,
-        exclude_keywords=weekly_exclude,
+        keywords=None,
+        exclude_keywords=None,
         hours_back=hours_back,
         top=200,
     )
-    logger.info(f"Found {len(emails)} matching weekly emails")
+    before = len(emails)
+    emails = [e for e in emails if email_matches_any_group(e.subject, e.sender_address, config.weekly_filters)]
+    logger.info(f"Found {len(emails)} matching weekly emails (per-group filter dropped {before - len(emails)})")
     saved = skipped = errors = 0
     for email in emails:
         if is_already_fetched(email.id, base_dir):

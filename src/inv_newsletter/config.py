@@ -107,6 +107,27 @@ class AppConfig:
                     result.append(k)
         return result
 
+
+def email_matches_group(subject: str, sender_address: str, group: FilterGroup) -> bool:
+    """A FilterGroup accepts an email when:
+    - sender_address ∈ group.senders (case-insensitive exact match)
+    - group.keywords empty OR ≥1 keyword is substring of subject (case-insensitive)
+    - none of group.exclude_keywords appear in subject
+    """
+    sender_l = sender_address.lower()
+    if sender_l not in {s.lower() for s in group.senders}:
+        return False
+    subj_l = subject.lower()
+    if group.keywords and not any(k.lower() in subj_l for k in group.keywords):
+        return False
+    if group.exclude_keywords and any(k.lower() in subj_l for k in group.exclude_keywords):
+        return False
+    return True
+
+
+def email_matches_any_group(subject: str, sender_address: str, groups: list[FilterGroup]) -> bool:
+    return any(email_matches_group(subject, sender_address, g) for g in groups)
+
     @property
     def all_source_groups(self) -> list[FilterGroup]:
         """All filter groups including virtual ones for social accounts."""
