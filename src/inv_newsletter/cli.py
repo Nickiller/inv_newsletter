@@ -47,8 +47,8 @@ def main():
                         help="Comma-separated dates to fetch Meritco minutes (e.g. 2026-04-23,2026-04-24)")
     parser.add_argument("--exclude-industry", default=None,
                         help="Comma-separated industry keywords to skip (e.g. 医疗,医药,健康)")
-    parser.add_argument("--meritco-days", type=int, default=3,
-                        help="Number of past days of Meritco minutes to include in daily summary (default 3)")
+    parser.add_argument("--meritco-days", type=int, default=1,
+                        help="Number of past days of Meritco minutes to include in daily summary (default 1 = target day only)")
     parser.add_argument("--no-auto-meritco", action="store_true",
                         help="Skip auto-fetching today's Meritco minutes when summarizing")
     parser.add_argument("--weekly", action="store_true",
@@ -311,7 +311,7 @@ def _do_meritco(target_date: str | None, exclude_industries: list[str] | None = 
 
 
 def _do_summarize(
-    config, base_dir: Path, target_date: str | None, meritco_days: int = 3,
+    config, base_dir: Path, target_date: str | None, meritco_days: int = 1,
     filename_suffix: str = "", prompt_file: Path | None = None,
 ):
     from inv_newsletter.meritco import MERITCO_DATA_DIR

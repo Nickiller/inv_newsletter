@@ -149,7 +149,7 @@ def summarize_daily(
     model: str = "claude-sonnet-4-20250514",
     max_tokens: int = 16000,
     meritco_dir: Path | None = None,
-    meritco_days: int = 3,
+    meritco_days: int = 1,
     filename_suffix: str = "",
     prompt_file: Path | None = None,
     tldr_model: str = TLDR_DEFAULT_MODEL,
