@@ -128,22 +128,6 @@ def email_matches_group(subject: str, sender_address: str, group: FilterGroup) -
 def email_matches_any_group(subject: str, sender_address: str, groups: list[FilterGroup]) -> bool:
     return any(email_matches_group(subject, sender_address, g) for g in groups)
 
-    @property
-    def all_source_groups(self) -> list[FilterGroup]:
-        """All filter groups including virtual ones for social accounts."""
-        groups = list(self.filters)
-        for acct in self.social.twitter.accounts:
-            groups.append(FilterGroup(
-                name=f"Twitter: {acct.name}",
-                senders=[f"twitter:{acct.handle}"],
-            ))
-        for acct in self.social.truth_social.accounts:
-            groups.append(FilterGroup(
-                name=f"Truth Social: {acct.name}",
-                senders=[f"truthsocial:{acct.handle}"],
-            ))
-        return groups
-
 
 def load_config(path: Path | None = None) -> AppConfig:
     """Load filters.yaml from the given path or default locations."""
