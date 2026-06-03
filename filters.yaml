@@ -114,6 +114,9 @@ summarization:
   max_tokens: 32000
   output_dir: "./output/daily"
   lark_folder_token: "VnpGfdTuylfRcJdFmGkct1Q1nqg"  # 飞书目标文件夹
+  # 日报生成后自动同步到 wiki（Obsidian vault，经 OneDrive 云同步；拷 .md + {date}/ 图片目录）
+  # 留空或删除此行即可关闭同步
+  wiki_sync_dir: "~/Code/Claude_Workspace/wiki_kb/wiki/raw/0_daily"
   sectors:
     - "AI 模型与平台"
     - "宏观与市场"

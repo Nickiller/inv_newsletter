@@ -331,6 +331,11 @@ def _do_summarize(
     )
 
     print(f"\nSaved to: {output_path}")
+
+    # Auto-sync the digest (+ images) into the wiki vault, if configured
+    from inv_newsletter.wiki_sync import sync_digest_to_wiki
+    sync_digest_to_wiki(output_path, sum_cfg.wiki_sync_dir)
+
     return output_path
 
 

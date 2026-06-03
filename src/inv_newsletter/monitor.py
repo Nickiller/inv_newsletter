@@ -88,6 +88,11 @@ def run_monitor(config: AppConfig, base_dir: Path) -> None:
             day_state["summarized_at"] = datetime.now(tz).isoformat()
             day_state["summary_path"] = str(output_path)
             logger.info(f"Digest saved -> {output_path}")
+
+            # Auto-sync the digest (+ images) into the wiki vault, if configured
+            from inv_newsletter.wiki_sync import sync_digest_to_wiki
+            sync_digest_to_wiki(output_path, sum_cfg.wiki_sync_dir)
+
             _notify_user(f"Daily digest ready: {received_count} sources summarized")
         except Exception as e:
             logger.error(f"Summarization failed: {e}")
