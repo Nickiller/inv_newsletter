@@ -9,7 +9,6 @@ import pytest
 
 from inv_newsletter import summarizer
 from inv_newsletter.summarizer import (
-    _append_audit_footer,
     _drift_audit,
     _inject_taxonomy,
     _reorder_industries_within_section,
@@ -258,12 +257,6 @@ def test_write_drift_logs_appends_lines(tmp_path):
     assert "ZZZZ" in unmapped
 
 
-def test_audit_footer_clean_when_no_drift():
-    digest = "## 半导体与硬件\n\n#### NVDA — body\n"
-    out = _append_audit_footer(digest, {"misclassified": [], "unmapped": []}, "2026-05-19")
-    assert "audit: clean" in out
-
-
 def test_drift_audit_accepts_hyperscaler_in_ai_platform():
     """GOOGL 主分类是 互联网，但 also_in 包含 AI 模型与平台 / Foundation Models —
     讨论 Gemini 时把 GOOGL 放在 AI 模型与平台不应被标为 drift。
@@ -410,26 +403,3 @@ def test_write_drift_logs_includes_kind(tmp_path):
     assert "游戏" in drift
     assert "ticker" in drift
     assert "TTWO" in drift
-
-
-def test_audit_footer_lists_offenders():
-    report = {
-        "misclassified": [
-            {
-                "ticker": "NVDA",
-                "canonical_ticker": "NVDA",
-                "found_in": "软件与SaaS",
-                "expected": "半导体与硬件",
-                "heading": "#### NVDA",
-            }
-        ],
-        "unmapped": [
-            {"ticker": "ZZZZ", "found_in": "半导体与硬件", "heading": "#### ZZZZ"}
-        ],
-    }
-    out = _append_audit_footer("digest body", report, "2026-05-19")
-    assert "<!--" in out and "-->" in out
-    assert "misclassified=1" in out
-    assert "unmapped=1" in out
-    assert "NVDA in 软件与SaaS → expected 半导体与硬件" in out
-    assert "unmapped: ZZZZ in 半导体与硬件" in out
