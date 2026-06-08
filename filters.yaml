@@ -29,6 +29,24 @@ filters:
     keywords:
       - "Bernstein TMT"
 
+  - name: "Bernstein TMT Daily"
+    senders:
+      - "kiran.shah@bernsteinsg.com"
+    keywords:
+      - "Bernstein's TMT Daily"
+
+  - name: "Bernstein Semis Hardware"
+    senders:
+      - "michael.chiang@bernsteinsg.com"
+    keywords:
+      - "Bernstein Semis"
+
+  - name: "JPM HKCHINA Daily"
+    senders:
+      - "felicia.wei@jpmorgan.com"
+    keywords:
+      - "HKCHINA Daily"
+
   - name: "FOMO Therapy"
     senders:
       - "no-reply@notifications.alphaholic.app"
@@ -117,6 +135,8 @@ summarization:
   # 日报生成后自动同步到 wiki（Obsidian vault，经 OneDrive 云同步；拷 .md + {date}/ 图片目录）
   # 留空或删除此行即可关闭同步
   wiki_sync_dir: "~/Code/Claude_Workspace/wiki_kb/wiki/raw/0_daily"
+  # 周报同步目标（独立子目录，留空则不同步）
+  weekly_wiki_sync_dir: "~/Code/Claude_Workspace/wiki_kb/wiki/raw/0_weekly"
   sectors:
     - "AI 模型与平台"
     - "宏观与市场"

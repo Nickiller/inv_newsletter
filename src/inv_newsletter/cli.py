@@ -85,7 +85,9 @@ def main():
 
     # Weekly mode (telemetry not yet instrumented for weekly — Phase 2)
     if args.weekly:
-        _do_weekly(config, base_dir, args.week_end)
+        out_path = _do_weekly(config, base_dir, args.week_end)
+        if args.publish and out_path and out_path.exists():
+            _do_publish(out_path, config.summarization.lark_folder_token)
         return
 
     start_run(_build_command_label(args), target_date=args.date)
@@ -300,6 +302,11 @@ def _do_weekly(config, base_dir: Path, week_end_str: str | None):
         max_tokens=sum_cfg.max_tokens,
     )
     print(f"\nSaved weekly digest to: {out_path}")
+
+    # Auto-sync the weekly digest into the wiki vault, if configured
+    from inv_newsletter.wiki_sync import sync_digest_to_wiki
+    sync_digest_to_wiki(out_path, sum_cfg.weekly_wiki_sync_dir)
+
     return out_path
 
 

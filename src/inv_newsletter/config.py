@@ -25,6 +25,7 @@ class SummarizationConfig:
     sectors: list[str] = field(default_factory=list)
     lark_folder_token: str | None = None
     wiki_sync_dir: Path | None = None
+    weekly_wiki_sync_dir: Path | None = None
 
 
 @dataclass
@@ -171,6 +172,7 @@ def load_config(path: Path | None = None) -> AppConfig:
         sectors=sum_raw.get("sectors", []),
         lark_folder_token=sum_raw.get("lark_folder_token"),
         wiki_sync_dir=Path(sum_raw["wiki_sync_dir"]) if sum_raw.get("wiki_sync_dir") else None,
+        weekly_wiki_sync_dir=Path(sum_raw["weekly_wiki_sync_dir"]) if sum_raw.get("weekly_wiki_sync_dir") else None,
     )
 
     # Parse monitor config
