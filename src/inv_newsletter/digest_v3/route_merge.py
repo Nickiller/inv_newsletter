@@ -80,6 +80,36 @@ def _load_routes(routes_dir: Path) -> dict[str, list[dict]]:
     return out
 
 
+def _load_image_routes(v3_dir: Path) -> dict[str, dict]:
+    """Load image-route overrides from v3/image_routes/*.json (per-email arrays).
+
+    Each file is a JSON array of ``{img_id, caption, primary, tickers}`` produced
+    by the vision image-route stage (CC subagents). Returns
+    ``{img_id: {"primary", "caption", "tickers"}}``. Missing dir → empty dict.
+
+    Images are routed *here* (by vision), decoupled from the text router — the
+    text-only router cannot see images and would DROP them all.
+    """
+    out: dict[str, dict] = {}
+    img_dir = v3_dir / "image_routes"
+    if not img_dir.is_dir():
+        return out
+    for fpath in sorted(img_dir.glob("*.json")):
+        data = json.loads(fpath.read_text(encoding="utf-8"))
+        if not isinstance(data, list):
+            continue
+        for obj in data:
+            iid = obj.get("img_id")
+            if not iid:
+                continue
+            out[iid] = {
+                "primary": obj.get("primary"),
+                "caption": obj.get("caption") or "",
+                "tickers": obj.get("tickers") or [],
+            }
+    return out
+
+
 def _is_drop(sector: str | None) -> bool:
     return (sector or "").strip().upper() == _DROP
 
@@ -120,19 +150,20 @@ def build_route_map(date: str, repo_root: Path | None = None) -> dict:
     content_sectors = _content_sectors()
     sector_set = set(content_sectors)
 
-    # ── 2. load routes + write image captions back into chunks.json ──────
+    # ── 2. load text routes + image-route overrides ─────────────────────
     routes_by_slug = _load_routes(routes_dir)
+    image_routes = _load_image_routes(v3)  # {img_id: {primary, caption, tickers}}
+
+    # write image captions (from the vision image-route stage) into chunks.json
     captions_written = 0
-    for slug, route_objs in routes_by_slug.items():
-        for robj in route_objs:
-            cid = robj.get("chunk_id")
-            chunk = chunk_by_id.get(cid)
-            if chunk is None or chunk.get("type") != "image":
-                continue
-            caption = robj.get("caption")
-            if caption is not None and chunk.get("caption") != caption:
-                chunk["caption"] = caption
-                captions_written += 1
+    for cid, ovr in image_routes.items():
+        chunk = chunk_by_id.get(cid)
+        if chunk is None or chunk.get("type") != "image":
+            continue
+        caption = ovr.get("caption")
+        if caption and chunk.get("caption") != caption:
+            chunk["caption"] = caption
+            captions_written += 1
     if captions_written:
         chunks_path.write_text(
             json.dumps(chunks_doc, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -147,23 +178,12 @@ def build_route_map(date: str, repo_root: Path | None = None) -> dict:
             ctype = chunk.get("type") if chunk else "text"
             low_structure = bool(chunk.get("low_structure")) if chunk else False
             chunk_text = chunk.get("text", "") if chunk else ""
-            chunk_caption = chunk.get("caption", "") if chunk else ""
 
             routes = robj.get("routes") or []
 
             if ctype == "image":
-                # image item — carries IMG id + caption; primary decides sector
-                primary = routes[0].get("primary") if routes else None
-                tickers = routes[0].get("tickers") if routes else None
-                items.append({
-                    "chunk_id": cid,
-                    "source_slug": slug,
-                    "type": "image",
-                    "primary": _clean_sector(primary),
-                    "secondary": None,
-                    "tickers": list(tickers or []),
-                    "caption": robj.get("caption") or chunk_caption or "",
-                })
+                # Images are routed by the dedicated vision image-route stage
+                # (pass 3b below), NOT by the text router — skip here.
                 continue
 
             # text chunk — normal: one route w/ chunk text; low_structure: each
@@ -182,6 +202,24 @@ def build_route_map(date: str, repo_root: Path | None = None) -> dict:
                     "tickers": list(route.get("tickers") or []),
                     "text": text,
                 })
+
+    # ── 3b. image items from chunks.json + vision image-route overrides ──
+    # Decoupled from the text router: every image chunk is sourced here and
+    # routed by its override (primary sector or DROP). No override → not routed.
+    for chunk in chunks_doc.get("chunks", []):
+        if chunk.get("type") != "image":
+            continue
+        cid = chunk["chunk_id"]
+        ovr = image_routes.get(cid) or {}
+        items.append({
+            "chunk_id": cid,
+            "source_slug": chunk.get("source_slug", ""),
+            "type": "image",
+            "primary": _clean_sector(ovr.get("primary")),
+            "secondary": None,
+            "tickers": list(ovr.get("tickers") or []),
+            "caption": ovr.get("caption") or chunk.get("caption", "") or "",
+        })
 
     # ── 4. multi_source (code) over non-DROP text items ──────────────────
     ticker_sources: dict[str, set[str]] = {}
