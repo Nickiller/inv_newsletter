@@ -67,6 +67,16 @@ primary 填 `DROP`（不进任何板块）的情况：
 无法判断或无分析价值（logo/签名）→ primary = DROP。
 </image_chunks>
 
+<headline_flag>
+给每条 route 标 `headline`（true/false）：true = 这条够格在所属板块里**单独立一个 `#### TICKER` 标题**（它是当天的主角之一）；false = 只是支撑信息，写稿时应并入相邻标题或作 bullet。
+满足任一即 true：
+- 当天财报 / guidance 变化（上调/下调/首次给出）/ 单日股价 ±5% 以上；
+- ≥2 家卖方覆盖，或卖方 + 久谦双源（多源）；
+- mega-cap（NVDA / AMZN / GOOGL / META / AAPL / MSFT / TSLA / BABA 等）或 AI 关键中盘（AMD / AVGO / MU / SK Hynix / Samsung / TSMC / ASML / DDOG / NOW 等）——即使当天没大动作也算，是买方每日必读 anchor；
+- 生动的标志性事件：市值里程碑、并购、重大产品发布等。
+其余一律 false；primary = DROP 的条目 headline 必为 false。低结构块拆出的每个子项各自判断。
+</headline_flag>
+
 <output>
 对每个 chunk 输出一个 JSON 对象，严格 JSON，无多余文字、无 markdown 代码围栏：
 {
@@ -75,7 +85,8 @@ primary 填 `DROP`（不进任何板块）的情况：
     {"excerpt": <低结构块为逐字原文，正常块为 null>,
      "primary": "<板块名 或 DROP>",
      "secondary": "<板块名 或 null>",
-     "tickers": ["<TICKER>", ...]}
+     "tickers": ["<TICKER>", ...],
+     "headline": <true/false，见 <headline_flag>>}
   ],
   "catalysts": [{"date": "<M/D|本周|近期>", "event": "<简述>", "tickers": ["<TICKER>"]}]
 }

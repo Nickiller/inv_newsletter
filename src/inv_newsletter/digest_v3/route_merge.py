@@ -44,6 +44,38 @@ SECTOR_SLUGS: dict[str, str] = {
     "其他": "other",
 }
 
+# Tickers that anchor a section even without a daily move (mega-cap + AI key
+# mid-caps). Matched against _norm_ticker() output (upper-cased, $-stripped);
+# includes name variants because routers emit both symbols (AVGO) and names
+# (SK Hynix / Samsung).
+ANCHOR_TICKERS: set[str] = {
+    "NVDA", "AMZN", "GOOGL", "GOOG", "META", "AAPL", "MSFT", "TSLA", "BABA",
+    "AMD", "AVGO", "MU", "TSM", "TSMC", "ASML",
+    "SK HYNIX", "000660.KS", "SAMSUNG", "005930.KS",
+    "DDOG", "NOW", "ORCL", "CRM", "PANW", "CRWD", "SNOW", "ADBE",
+}
+
+
+def _primary_sort_key(item: dict) -> tuple[int]:
+    """Importance rank for ordering a sector's primary items (higher = earlier).
+
+    Mirrors the legacy priority: anchor names first (PM daily-read anchors, even
+    without a daily move), then headline-flagged events, then multi-source.
+    Python's sort is stable, so ties keep their original (slug+chunk) order.
+
+    The anchor bonus keys on the **subject** ticker only (``tickers[0]``), not any
+    mentioned ticker — otherwise a peer name-drop (e.g. a SAP preview that cites
+    ORCL/CRM) wrongly inherits an anchor's weight and floats above real movers.
+    """
+    tickers = item.get("tickers") or []
+    subject_is_anchor = bool(tickers) and _norm_ticker(tickers[0]) in ANCHOR_TICKERS
+    score = (
+        (1000 if subject_is_anchor else 0)
+        + (100 if item.get("headline") else 0)
+        + (10 if item.get("multi_source") else 0)
+    )
+    return (-score,)
+
 
 def _v3_dir(date: str, repo_root: Path | None = None) -> Path:
     root = repo_root or Path.cwd()
@@ -200,6 +232,7 @@ def build_route_map(date: str, repo_root: Path | None = None) -> dict:
                     "primary": _clean_sector(route.get("primary")),
                     "secondary": _clean_sector(route.get("secondary")),
                     "tickers": list(route.get("tickers") or []),
+                    "headline": bool(route.get("headline")),
                     "text": text,
                 })
 
@@ -275,6 +308,7 @@ def build_route_map(date: str, repo_root: Path | None = None) -> dict:
                 "source_slug": it["source_slug"],
                 "tickers": it["tickers"],
                 "multi_source": it["multi_source"],
+                "headline": it.get("headline", False),
                 "text": it["text"],
             })
             by_sector_primary[primary] += 1
@@ -436,7 +470,7 @@ def main(argv: list[str] | None = None) -> int:
         ]
         slice_payload = {
             "sector": sector_name,
-            "primary": bucket["primary"],
+            "primary": sorted(bucket["primary"], key=_primary_sort_key),
             "secondary": bucket["secondary"],
             "images": images,
         }
