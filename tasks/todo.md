@@ -163,3 +163,43 @@ def naturalize(digest_md, model=..., client=None) -> (out_md, usage, used_review
 
 ## Review
 （实现后补）
+
+---
+
+# 2026-06-15 多源主题识别优化（multi-source theme elevation）
+
+**目标（唯一）**：被 ≥2 个来源（不同 source_slug）共同提到的**主题**，应被识别为高重要度
+→ 上浮 + 独立 headline + 分点写出共识/分歧。当前 v3 只在 **ticker** 维度算 multi_source，
+**主题级**多源（800VDC / 存储超级周期 / 政策 read-through）全漏 → 被压进无分点 prose 尾部。
+
+**根因**：抽取是**逐封邮件**做的（per-email route），"多"这个维度结构性不可见；
+route_merge 代码补算只认 **ticker 重叠**，不认**主题重叠**。legacy 单脑看全部能直接感知主题级多源。
+
+**两层修复**
+- 层 A（抽取层，对应"单封邮件抽取的问题"）：让 route 在单封内就抽出**主题标签**，把"这块属于什么主题"显式化。
+- 层 B（归并层，"多"唯一能算出的地方）：跨邮件把同义主题聚到一起，≥2 source 的主题标 multi-source-theme，
+  固化进 route_map，驱动排序 + section 写法。
+
+**设计岔路（待定）**：主题聚类用代码还是 LLM？
+- MVP = 代码 normalize + 精确/别名匹配（便宜、确定、可重跑）。
+- 升级 = 一个 cheap LLM `theme_merge` subagent（只喂 {chunk_id, source, ticker, theme, 一行 gist} 紧凑元数据 ~221 行，**不喂全文**）聚同义主题。
+- 推荐：**代码优先**，检查点看 800VDC 抓没抓到，漏同义词再上 LLM。
+
+- [x] **Phase 1 — route 抽 theme（抽取层）** ✅ route.md 加 `<theme>` 段 + schema `theme` 字段；7 路由 agent 重跑，theme 标签率 6/45~28/34 不等
+- [x] **Phase 2 — route_merge 归并主题（代码）** ✅ `_norm_theme`/`_clean_theme` + 4b theme 分组 + `_primary_sort_key` +300 + sections_input 带 theme/theme_multi_source + stats
+- [x] **检查点（跑 2026-06-15 对照）✅ PASS**
+  - 检出 5 个多源主题：`800VDC`(2源) / `AI capex`(4) / `GaN专利`(2) / `SPE涨价`(2) / `存储超级周期`(2)，theme_multi_source_items=17
+  - **800VDC：pos 48/49 → pos 13/18/19 of 75**（脱离尾部，进 top quartile，3 块连续 → 可成块）
+  - 已知边界：0031 用 `AIDC供电`、0824/1147 用 `800VDC`——同义/不同粒度未合并（代码精确匹配的固有局限，需 LLM theme_merge 才能跨语义合并）
+  - ⏸ 待用户定 section 写法"算对"标准，再 wire 进 Phase 3
+- [x] **Phase 3 — section 写法** ✅ master.md §一 加 `theme_multi_source` 规则（同主题聚一起、各自成 bullet、不折叠不删）+ §四 删除规则例外；6 section agent 重跑
+  - 结果：semi 5 个多源主题全部成 `### {主题}` block + 分点（`### 800VDC` 从尾部 prose → 独立 block + 3 bullet 列 bull/bear/trade）；rubric「multi-source theme 有自己的 bullets」达成
+  - 最终 digest 374 行 / 90,712 字（vs pre-theme 351 行 / 80,907）
+  - [ ] （deferred）代码聚类漏同义主题（`AIDC供电` vs `800VDC` 未合并）→ 需要时再插 LLM `theme_merge` subagent
+
+## 状态：✅ Phase 1-3 完成（代码路径），待用户决定是否 re-publish + commit
+
+## Deferred / 待用户定
+- **成功标准由用户先写**（feedback_user_authors_eval_rubric）：800VDC 这类"算正确处理"长什么样？必须独立 headline？分歧必须分点？
+- sort 权重具体数值 / 主题别名词典（800VDC≈800V DC≈±400V）维护方式
+- 主题级多源是否也该反哺 catalyst / TL;DR
