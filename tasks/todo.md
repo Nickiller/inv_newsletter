@@ -8,7 +8,7 @@ v3 从 prototype 转 API pipeline 时漏了 **image captioning 阶段**：
 - `_select_key_images` 只按 size/扩展名过滤，**不做 logo/广告语义判断** → 必须有一次"看图"才能定 DROP/板块。
 
 ## 决策 — 全 CC subagents 驱动，按 stage 选模型档（2026-06-08 锁定，方案 A）
-原型期 + **大概率正式版也用 A**。`run_v3.py`（API harness）降级为 deferred/弃用，不再投资。
+原型期 + **大概率正式版也用 A**。`run_v3.py`（API harness）已删除（2026-06-17）——v3 不再有 API 驱动路径，所有 LLM stage 一律走 CC subagent。
 正式版"自动化" = 定时 CC session（如 scheduled-task）编排 subagents，非 launchd 调 API CLI。
 
 | Stage | 驱动 | 模型 |
