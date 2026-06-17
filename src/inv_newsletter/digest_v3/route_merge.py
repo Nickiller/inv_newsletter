@@ -60,7 +60,9 @@ def _primary_sort_key(item: dict) -> tuple[int]:
     """Importance rank for ordering a sector's primary items (higher = earlier).
 
     Mirrors the legacy priority: anchor names first (PM daily-read anchors, even
-    without a daily move), then headline-flagged events, then multi-source.
+    without a daily move), then multi-source *themes* (a topic ≥2 sellsiders
+    converge on — the single most important signal), then headline-flagged
+    events, then ticker-level multi-source.
     Python's sort is stable, so ties keep their original (slug+chunk) order.
 
     The anchor bonus keys on the **subject** ticker only (``tickers[0]``), not any
@@ -71,6 +73,7 @@ def _primary_sort_key(item: dict) -> tuple[int]:
     subject_is_anchor = bool(tickers) and _norm_ticker(tickers[0]) in ANCHOR_TICKERS
     score = (
         (1000 if subject_is_anchor else 0)
+        + (300 if item.get("theme_multi_source") else 0)
         + (100 if item.get("headline") else 0)
         + (10 if item.get("multi_source") else 0)
     )
@@ -98,6 +101,30 @@ def _norm_ticker(t: str) -> str:
     if not t:
         return ""
     return t.strip().lstrip("$").upper()
+
+
+def _clean_theme(theme: str | None) -> str | None:
+    """Return a stripped theme tag, or None for empty/null-ish values."""
+    if theme is None:
+        return None
+    s = theme.strip()
+    if not s or s.lower() in {"null", "none", "n/a"}:
+        return None
+    return s
+
+
+def _norm_theme(theme: str | None) -> str:
+    """Normalize a theme tag for cross-email grouping.
+
+    Strips whitespace/punctuation and lowercases so per-email routers that emit
+    e.g. ``800VDC`` / ``800V DC`` collapse to the same key. CJK chars are kept
+    (they count as word chars under re.UNICODE). Synonyms that don't normalize
+    to the same string (``800VDC`` vs ``±400V``) are out of scope for this code
+    pass — escalate to an LLM theme-merge stage if exact-after-normalize misses.
+    """
+    if not theme:
+        return ""
+    return re.sub(r"[\s\W_]+", "", theme, flags=re.UNICODE).lower()
 
 
 def _load_routes(routes_dir: Path) -> dict[str, list[dict]]:
@@ -233,6 +260,7 @@ def build_route_map(date: str, repo_root: Path | None = None) -> dict:
                     "secondary": _clean_sector(route.get("secondary")),
                     "tickers": list(route.get("tickers") or []),
                     "headline": bool(route.get("headline")),
+                    "theme": _clean_theme(route.get("theme")),
                     "text": text,
                 })
 
@@ -273,6 +301,24 @@ def build_route_map(date: str, repo_root: Path | None = None) -> dict:
             _norm_ticker(t) in multi_tickers for t in it["tickers"]
         )
 
+    # ── 4b. theme multi_source (code) — a theme covered by >=2 distinct sources ──
+    # The single most important signal: themes (not tickers) that multiple sellsiders
+    # converge on. Per-email routers can't see "multi", so it can only be computed
+    # here, globally, by grouping on the theme tag each chunk carries.
+    theme_sources: dict[str, set[str]] = {}
+    for it in items:
+        if it["type"] != "text" or _is_drop(it["primary"]):
+            continue
+        nt = _norm_theme(it.get("theme"))
+        if nt:
+            theme_sources.setdefault(nt, set()).add(it["source_slug"])
+
+    multi_themes = {t for t, srcs in theme_sources.items() if len(srcs) >= 2}
+
+    for it in items:
+        nt = _norm_theme(it.get("theme"))
+        it["theme_multi_source"] = bool(nt) and nt in multi_themes
+
     # ── 5a. bucket into sectors ──────────────────────────────────────────
     sectors_out: dict[str, dict] = {
         s: {"primary": [], "secondary": [], "images": []} for s in content_sectors
@@ -309,6 +355,8 @@ def build_route_map(date: str, repo_root: Path | None = None) -> dict:
                 "tickers": it["tickers"],
                 "multi_source": it["multi_source"],
                 "headline": it.get("headline", False),
+                "theme": it.get("theme"),
+                "theme_multi_source": it.get("theme_multi_source", False),
                 "text": it["text"],
             })
             by_sector_primary[primary] += 1
@@ -335,6 +383,19 @@ def build_route_map(date: str, repo_root: Path | None = None) -> dict:
     multi_source_items = sum(
         1 for it in items if it["type"] == "text" and not _is_drop(it["primary"]) and it["multi_source"]
     )
+    theme_multi_source_items = sum(
+        1 for it in items if it["type"] == "text" and not _is_drop(it["primary"]) and it.get("theme_multi_source")
+    )
+
+    # representative original label + source count for each multi-source theme (display only)
+    theme_label_by_norm: dict[str, str] = {}
+    for it in items:
+        nt = _norm_theme(it.get("theme"))
+        if nt and nt not in theme_label_by_norm:
+            theme_label_by_norm[nt] = _clean_theme(it.get("theme")) or nt
+    multi_theme_summary = {
+        theme_label_by_norm.get(t, t): len(theme_sources[t]) for t in sorted(multi_themes)
+    }
 
     stats = {
         "total_items": len(items),
@@ -342,6 +403,8 @@ def build_route_map(date: str, repo_root: Path | None = None) -> dict:
         "dropped": len(dropped),
         "images_routed": images_routed,
         "multi_source_items": multi_source_items,
+        "multi_source_themes": multi_theme_summary,
+        "theme_multi_source_items": theme_multi_source_items,
         "catalysts": len(catalysts),
     }
 

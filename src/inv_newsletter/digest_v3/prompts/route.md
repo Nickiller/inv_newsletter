@@ -67,6 +67,18 @@ primary 填 `DROP`（不进任何板块）的情况：
 无法判断或无分析价值（logo/签名）→ primary = DROP。
 </image_chunks>
 
+<theme>
+给每条 route 标一个 `theme`：用于跨邮件识别"**多家来源共同讨论的主题**"（下游代码会把同名 theme 跨邮件聚合，
+≥2 个来源共同提及的主题会被判为高重要度并上浮）。
+- theme 是**跨 ticker 的话题轴**，不是 ticker、不是板块名。例：`800VDC`、`存储超级周期`、`SPE涨价`、
+  `GaN专利`、`HBM4`、`AI capex`、`稳定币`、`关税`。
+- 用 3-8 字的**归一化短标签**，英文 ticker/缩写/型号原样保留（`800VDC` 不要写成「八百伏直流」）。
+  **同一主题在不同邮件里务必用同一个标签**——统一写 `800VDC`，不要一处 `800V DC` 一处 `数据中心电压架构`。
+- 只有当这块内容确实属于一个**可能被多家共同讨论的行业级主题**时才填；纯单 ticker 的个例公司新闻
+  （某公司财报、某股评级变动、单一并购）theme 留 null。
+- 低结构块拆出的每个子项各自判断 theme。
+</theme>
+
 <headline_flag>
 给每条 route 标 `headline`（true/false）：true = 这条够格在所属板块里**单独立一个 `#### TICKER` 标题**（它是当天的主角之一）；false = 只是支撑信息，写稿时应并入相邻标题或作 bullet。
 满足任一即 true：
@@ -86,9 +98,10 @@ primary 填 `DROP`（不进任何板块）的情况：
      "primary": "<板块名 或 DROP>",
      "secondary": "<板块名 或 null>",
      "tickers": ["<TICKER>", ...],
+     "theme": "<3-8字归一化主题标签 或 null，见 <theme>>",
      "headline": <true/false，见 <headline_flag>>}
   ],
   "catalysts": [{"date": "<M/D|本周|近期>", "event": "<简述>", "tickers": ["<TICKER>"]}]
 }
-注意：**不要**判断 multi_source（多源共识由代码计算）。
+注意：**不要**判断 multi_source / theme 是否多源（跨邮件多源由代码计算，你只需如实填本块的 theme 标签）。
 </output>
