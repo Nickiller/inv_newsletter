@@ -346,6 +346,45 @@ def _do_summarize(
     return output_path
 
 
+def _write_last_run(md_path: Path, doc_url: str) -> None:
+    """Persist output/last_run.json for the WeChat bridge (Pattern A).
+
+    The WeChat bot reads this file and replies with ``wechat_text`` on demand.
+    Daily digests only (a weekly publish would clobber the latest daily the bot
+    reports). Best-effort — never breaks an already-successful publish.
+    """
+    import json as _json
+    import re as _re
+    from datetime import datetime as _dt
+
+    stem = md_path.stem
+    if "weekly_digest" in stem:
+        return
+    m = _re.search(r"(\d{4})-(\d{2})-(\d{2})", stem)
+    full_date = m.group(0) if m else stem
+    short = full_date[2:] if m else stem  # 2026-06-18 -> 26-06-18
+    wechat_text = f"今日[{short}] Daily Digest已经生成，点击如下链接查看：{doc_url}"
+    path_kind = "v3" if stem.endswith("_v3") else "legacy"
+    out_root = md_path.resolve().parent
+    if out_root.name == "daily":
+        out_root = out_root.parent
+    status = {
+        "date": full_date,
+        "ok": True,
+        "path": path_kind,
+        "lark_url": doc_url,
+        "wechat_text": wechat_text,
+        "generated_at": _dt.now().astimezone().isoformat(timespec="seconds"),
+    }
+    try:
+        (out_root / "last_run.json").write_text(
+            _json.dumps(status, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        logger.info(f"Wrote {out_root / 'last_run.json'} (path={path_kind})")
+    except Exception as e:
+        logger.warning(f"Failed to write last_run.json (publish still OK): {e}")
+
+
 def _do_publish(md_path: Path, folder_token: str | None = None):
     import re as _re
     from inv_newsletter.lark_publisher import publish_digest
@@ -366,6 +405,9 @@ def _do_publish(md_path: Path, folder_token: str | None = None):
         label, prefix = "Daily Digest", f"今日[{date_str}]"
     print("\n💬 微信分享文案：")
     print(f"{prefix} {label}已经生成，点击如下链接查看：{doc_url}")
+
+    # Keep the WeChat-bridge status file fresh (daily only; best-effort).
+    _write_last_run(md_path, doc_url)
 
 
 if __name__ == "__main__":

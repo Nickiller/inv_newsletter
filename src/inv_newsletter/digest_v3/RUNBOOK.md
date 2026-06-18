@@ -163,6 +163,10 @@ Prepends TL;DR → `output/daily/<date>_daily_digest_v3.md` (the published file)
    inv-newsletter --publish-file output/daily/<date>_daily_digest_v3.md
    ```
    Returns the Lark doc URL + the 微信分享文案. Return both to the caller.
+   Publishing also refreshes `output/last_run.json` automatically (via
+   `cli._write_last_run`) — the WeChat bridge reads that file to report status on
+   demand (Pattern A). No separate step needed; the legacy fallback path writes
+   it too.
 
 > Optional quality pass (not yet wired): `reviewer.py` (de-AI prose rewrite,
 > URL+IMG signature gate). Skip unless explicitly requested.
