@@ -363,8 +363,13 @@ def _write_last_run(md_path: Path, doc_url: str) -> None:
     m = _re.search(r"(\d{4})-(\d{2})-(\d{2})", stem)
     full_date = m.group(0) if m else stem
     short = full_date[2:] if m else stem  # 2026-06-18 -> 26-06-18
-    wechat_text = f"今日[{short}] Daily Digest已经生成，点击如下链接查看：{doc_url}"
     path_kind = "v3" if stem.endswith("_v3") else "legacy"
+    ver_label = "v3 新版" if path_kind == "v3" else "legacy 旧版"
+    # share_text = the forwardable 微信分享文案; status_line = run confirmation.
+    # wechat_text = what the bridge sends back: status THEN the share line.
+    share_text = f"今日[{short}] Daily Digest已经生成，点击如下链接查看：{doc_url}"
+    status_line = f"✅ 今日日报已生成（{ver_label}）· {full_date}"
+    wechat_text = f"{status_line}\n\n{share_text}"
     out_root = md_path.resolve().parent
     if out_root.name == "daily":
         out_root = out_root.parent
@@ -373,6 +378,8 @@ def _write_last_run(md_path: Path, doc_url: str) -> None:
         "ok": True,
         "path": path_kind,
         "lark_url": doc_url,
+        "status_line": status_line,
+        "share_text": share_text,
         "wechat_text": wechat_text,
         "generated_at": _dt.now().astimezone().isoformat(timespec="seconds"),
     }
