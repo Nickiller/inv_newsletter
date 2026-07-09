@@ -45,9 +45,9 @@ SECTOR_SLUGS: dict[str, str] = {
 }
 
 # Tickers that anchor a section even without a daily move (mega-cap + AI key
-# mid-caps). Matched against _norm_ticker() output (upper-cased, $-stripped);
-# includes name variants because routers emit both symbols (AVGO) and names
-# (SK Hynix / Samsung).
+# mid-caps). Matched via _compact() (upper, $-stripped, spaces+dots dropped) so
+# separator variants collapse: 005930.KS / 005930 KS and SK Hynix / SK HYNIX all
+# hit. Includes name variants because routers emit both symbols (AVGO) and names.
 ANCHOR_TICKERS: set[str] = {
     "NVDA", "AMZN", "GOOGL", "GOOG", "META", "AAPL", "MSFT", "TSLA", "BABA",
     "AMD", "AVGO", "MU", "TSM", "TSMC", "ASML",
@@ -56,28 +56,58 @@ ANCHOR_TICKERS: set[str] = {
 }
 
 
-def _primary_sort_key(item: dict) -> tuple[int]:
-    """Importance rank for ordering a sector's primary items (higher = earlier).
+def _item_score(item: dict) -> tuple[bool, bool, bool, bool]:
+    """Importance rank for one primary item, as a 4-field tuple (higher = earlier).
 
-    Mirrors the legacy priority: anchor names first (PM daily-read anchors, even
-    without a daily move), then multi-source *themes* (a topic ≥2 sellsiders
-    converge on — the single most important signal), then headline-flagged
-    events, then ticker-level multi-source.
-    Python's sort is stable, so ties keep their original (slug+chunk) order.
+    Tuple order *is* the priority — compared field by field, True > False:
+      1. theme_multi_source — a topic ≥2 sellsiders converge on (the single most
+         important signal; the code that computes it says as much).
+      2. subject-ticker anchor — mega-cap PM daily-read anchor, even without a
+         daily move. Keys on the **subject** ticker only (``tickers[0]``), not any
+         mentioned ticker, so a peer name-drop (a SAP preview citing ORCL/CRM)
+         doesn't inherit an anchor's weight.
+      3. headline — a flagged same-day event (earnings / ±5% / multi-cover).
+      4. multi_source — ticker-level (same ticker across ≥2 emails).
 
-    The anchor bonus keys on the **subject** ticker only (``tickers[0]``), not any
-    mentioned ticker — otherwise a peer name-drop (e.g. a SAP preview that cites
-    ORCL/CRM) wrongly inherits an anchor's weight and floats above real movers.
+    No magic weights: reorder the fields to change the priority. Sorting is done
+    at the *group* level (see _grouped_primary_order) so a topic's members stay
+    together instead of scattering by their individual anchors.
     """
     tickers = item.get("tickers") or []
-    subject_is_anchor = bool(tickers) and _norm_ticker(tickers[0]) in ANCHOR_TICKERS
-    score = (
-        (1000 if subject_is_anchor else 0)
-        + (300 if item.get("theme_multi_source") else 0)
-        + (100 if item.get("headline") else 0)
-        + (10 if item.get("multi_source") else 0)
+    subject_is_anchor = bool(tickers) and _compact(tickers[0]) in _ANCHOR_KEYS
+    return (
+        bool(item.get("theme_multi_source")),
+        subject_is_anchor,
+        bool(item.get("headline")),
+        bool(item.get("multi_source")),
     )
-    return (-score,)
+
+
+def _grouped_primary_order(items: list[dict]) -> list[dict]:
+    """Order a sector's primary items by topic-group, keeping same-theme items together.
+
+    The sort *unit* is the theme, not the chunk: same-theme items would otherwise
+    get different individual scores (one carries an anchor ticker, another doesn't)
+    and scatter across the section. Here each theme becomes one group ranked by its
+    strongest member (``max`` over member tuples), groups sort by that rank, and
+    within a group the original slug+chunk order is preserved. Items with no theme
+    are singleton groups, interleaved among the theme groups by their own score.
+
+    Because same-theme items are now guaranteed contiguous, the section prompt no
+    longer needs a "regroup same-theme bullets" rule — given order == grouped order.
+    """
+    groups: dict[str, list[dict]] = {}
+    order: list[str] = []
+    for i, it in enumerate(items):
+        key = _norm_theme(it.get("theme")) or f"__solo_{i}"
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(it)
+
+    # stable: order.sort keeps first-appearance order among equal-ranked groups
+    order.sort(key=lambda k: max(_item_score(it) for it in groups[k]), reverse=True)
+    return [it for k in order for it in groups[k]]
 
 
 def _v3_dir(date: str, repo_root: Path | None = None) -> Path:
@@ -101,6 +131,20 @@ def _norm_ticker(t: str) -> str:
     if not t:
         return ""
     return t.strip().lstrip("$").upper()
+
+
+def _compact(t: str) -> str:
+    """Anchor-match key: _norm_ticker() with spaces and dots dropped.
+
+    Collapses separator variants so 005930.KS / 005930 KS and SK Hynix / SK HYNIX
+    all map to one key. Used only for ANCHOR_TICKERS membership, not for
+    multi-source counting (which keys on _norm_ticker to keep symbols distinct).
+    """
+    return re.sub(r"[\s.]+", "", _norm_ticker(t))
+
+
+# ANCHOR_TICKERS in compact form, for _compact()-based membership tests.
+_ANCHOR_KEYS: set[str] = {_compact(t) for t in ANCHOR_TICKERS}
 
 
 def _clean_theme(theme: str | None) -> str | None:
@@ -533,7 +577,7 @@ def main(argv: list[str] | None = None) -> int:
         ]
         slice_payload = {
             "sector": sector_name,
-            "primary": sorted(bucket["primary"], key=_primary_sort_key),
+            "primary": _grouped_primary_order(bucket["primary"]),
             "secondary": bucket["secondary"],
             "images": images,
         }
