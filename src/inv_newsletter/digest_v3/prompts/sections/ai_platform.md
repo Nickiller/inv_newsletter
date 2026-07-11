@@ -10,8 +10,10 @@ DeepSeek / xAI / MiniMax / 阿里 Qwen / 腾讯混元 等——模型发布与�
 </coverage>
 
 <focus>
-- **以模型公司为组织主线**：按 LLM lab（OpenAI / Anthropic / Google DeepMind / DeepSeek / 国产几家）
-  分别成段（`#### 公司名`），讲清各家当日的模型/产品/人才/商业化进展与竞争态势。读者最想知道"几家模型公司本身怎么样了"。
+- **以模型公司为组织主线**：读者最想知道"几家模型公司本身怎么样了"，按 LLM lab
+  （OpenAI / Anthropic / Google DeepMind / DeepSeek / 国产几家）组织当日的模型/产品/人才/商业化进展与竞争态势。
+  分段粒度**服从 master 的 headline 规则**——`headline:true` 的 lab 各自起 `#### 公司名`，
+  其余 lab 的动态并入最相关段落或作 bullet，不为每家硬起标题。
 - **Gemini / Copilot 等 hyperscaler AI 模型产品**写在这里（如「Apple 新 Siri 采用 Gemini」= Gemini 拿下 Apple 分发渠道）。
   </focus>
 

@@ -23,9 +23,9 @@
 - **Hyperscaler AI 产品**（Gemini/TPU/Llama/Copilot/Bedrock/Trainium 等）→ primary = AI 模型与平台；
   其非 AI 业务（广告/电商/AWS 基础设施）→ primary = 各自主板块。
 - **mega-cap 公司战略/财务叙事 ≠ AI 板块**：Google 增发/回购、CEO 访谈谈竞争格局、设备战略、组织调整等
-  公司层面内容，即使涉 AI，也归 `其他` 或 DROP，不要塞进 AI 模型与平台。只有**具体的 AI 模型/产品进展**
+  公司层面内容，即使涉 AI，也归**该公司主业板块**，不要塞进 AI 模型与平台。只有**具体的 AI 模型/产品进展**
   （模型发布、能力、定价、采用）才进 AI 板块。例：「Apple 新 Siri 采用 Gemini」→ AI 板块（Gemini 拿下 Apple 分发）；
-  「Google 向 Berkshire 增发」「Nadella 谈 Microsoft 竞争位置」→ `其他`。
+  「Google 向 Berkshire 增发」→ 互联网与数字广告；「Nadella 谈 Microsoft 竞争位置」→ 软件与SaaS。
 
 **Read-through 判例**（primary = 被影响板块，事件源放 secondary）：
 | 内容 | primary | secondary |
@@ -69,13 +69,12 @@ primary 填 `DROP`（不进任何板块）的情况：
 
 <theme>
 给每条 route 标一个 `theme`：用于跨邮件识别"**多家来源共同讨论的主题**"（下游代码会把同名 theme 跨邮件聚合，
-≥2 个来源共同提及的主题会被判为高重要度并上浮）。
-- theme 是**跨 ticker 的话题轴**，不是 ticker、不是板块名。例：`800VDC`、`存储超级周期`、`SPE涨价`、
-  `GaN专利`、`HBM4`、`AI capex`、`稳定币`、`关税`。
-- 用 3-8 字的**归一化短标签**，英文 ticker/缩写/型号原样保留（`800VDC` 不要写成「八百伏直流」）。
-  **同一主题在不同邮件里务必用同一个标签**——统一写 `800VDC`，不要一处 `800V DC` 一处 `数据中心电压架构`。
+≥2 个来源共同提及的主题会被判为高重要度并上浮）。**聚合靠字符串完全一致**，所以标签统一是关键。
+- **优先从随附的 `themes.txt` 常青词库里逐字照抄**一个标签（能对上就照抄，别改字）。
+  真·新主题（词库里确实没有）才自造 3-8 字标签，并把该 route 的 `theme_is_new` 设为 true。
+- theme 是**跨 ticker 的话题轴**，不是 ticker、不是板块名；英文缩写/型号原样保留（`800VDC` 不写「八百伏直流」）。
 - 只有当这块内容确实属于一个**可能被多家共同讨论的行业级主题**时才填；纯单 ticker 的个例公司新闻
-  （某公司财报、某股评级变动、单一并购）theme 留 null。
+  （某公司财报、某股评级变动、单一并购）theme 留 null，`theme_is_new` 留 false。
 - 低结构块拆出的每个子项各自判断 theme。
 </theme>
 
@@ -98,7 +97,8 @@ primary 填 `DROP`（不进任何板块）的情况：
      "primary": "<板块名 或 DROP>",
      "secondary": "<板块名 或 null>",
      "tickers": ["<TICKER>", ...],
-     "theme": "<3-8字归一化主题标签 或 null，见 <theme>>",
+     "theme": "<themes.txt 里的标签 或 自造标签 或 null，见 <theme>>",
+     "theme_is_new": <true=自造(词库无此主题) / false=照抄词库或无theme，见 <theme>>,
      "headline": <true/false，见 <headline_flag>>}
   ],
   "catalysts": [{"date": "<M/D|本周|近期>", "event": "<简述>", "tickers": ["<TICKER>"]}]

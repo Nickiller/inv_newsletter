@@ -1,0 +1,51 @@
+# 常青主题词库（theme vocabulary）
+# 用途：route 阶段给每条 route 标 theme 时，优先从这里选一个**逐字**标签，
+#       让同一产业叙事在不同邮件里落到同一个字符串，下游才能正确聚合多源信号。
+# 规则：能对上就逐字照抄；确实对不上（真·新主题）才自造 3-8 字标签。
+# 维护：每周把 route_map.json 里反复出现的 `theme_is_new` 标签人工吸收进来。
+# 注意：这是**跨 ticker 的话题轴**，不是 ticker、不是板块名。
+
+## 半导体与硬件
+存储超级周期        # DRAM/NAND upcycle、LTA 重估、涨价、供需紧缺统一走这个，不要拆成"存储涨价"
+HBM供需
+国产存储替代        # CXMT / 长江存储 等国产替代
+国产算力
+Foundry竞争
+先进封装            # CoWoS / 2.5D/3D 封装产能
+光模块升级          # 800G/1.6T、CPO、光通信
+AI PCB
+设备国产化
+GPU算力需求
+CPU竞争
+MLCC
+
+## AI 模型与算力
+AI capex            # hyperscaler 资本开支、pull-forward、GW 扩产
+电力瓶颈            # 数据中心电力/并网交付约束
+模型能力竞赛        # 前沿模型 benchmark / 能力代差
+AI变现              # 定价、商业化、API 收入
+Agent编码           # coding agent / dev tools
+推理成本
+
+## 互联网与数字广告
+广告复苏
+中概监管            # 政策、回流、ADR
+电商竞争
+AI冲击搜索
+
+## 软件与SaaS
+SaaS财报
+企业IT支出
+网络安全整合
+
+## 宏观与市场
+利率与大宗
+关税            # 关税/出口管制/地缘
+Factor unwind       # momentum / crowding 反转
+稳定币
+
+## 其他
+商业航天
+机器人              # Embodied AI / 人形机器人
+新能源
+量子计算

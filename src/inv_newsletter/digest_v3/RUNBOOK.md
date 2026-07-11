@@ -68,10 +68,12 @@ Writes `v3/chunks.json` + `v3/chunks_by_email/<slug>.json`. Image chunks get
 ## Stage 3 — text-route (subagent ×N, sonnet)
 
 `mkdir -p output/daily/<date>/v3/routes`. Per slug, one subagent: `Read` prompt
-`digest_v3/prompts/route.md` + `Read` `v3/chunks_by_email/<slug>.json` → build a
-**JSON array**, one route object per chunk (`{chunk_id, routes, catalysts}` per
-route.md `<output>`) → `Write` `v3/routes/<slug>.json` (strict JSON, no fences).
-Status: `route OK <slug> — N chunks`.
+`digest_v3/prompts/route.md` + `Read` `digest_v3/prompts/themes.txt` (theme
+vocabulary — copy a label verbatim when it matches, else self-author and set
+`theme_is_new`) + `Read` `v3/chunks_by_email/<slug>.json` → build a **JSON
+array**, one route object per chunk (`{chunk_id, routes, catalysts}` per route.md
+`<output>`) → `Write` `v3/routes/<slug>.json` (strict JSON, no fences). Status:
+`route OK <slug> — N chunks`.
 
 ## Stage 4 — image-route (subagent ×M, sonnet, vision)
 

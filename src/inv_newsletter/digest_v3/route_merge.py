@@ -305,6 +305,7 @@ def build_route_map(date: str, repo_root: Path | None = None) -> dict:
                     "tickers": list(route.get("tickers") or []),
                     "headline": bool(route.get("headline")),
                     "theme": _clean_theme(route.get("theme")),
+                    "theme_is_new": bool(route.get("theme_is_new")),
                     "text": text,
                 })
 
@@ -441,6 +442,14 @@ def build_route_map(date: str, repo_root: Path | None = None) -> dict:
         theme_label_by_norm.get(t, t): len(theme_sources[t]) for t in sorted(multi_themes)
     }
 
+    # self-authored themes (not in themes.txt vocabulary) — review weekly and
+    # fold recurring ones into digest_v3/prompts/themes.txt.
+    new_themes = sorted({
+        _clean_theme(it.get("theme"))
+        for it in items
+        if it.get("theme_is_new") and _clean_theme(it.get("theme"))
+    })
+
     stats = {
         "total_items": len(items),
         "by_sector_primary": by_sector_primary,
@@ -449,6 +458,7 @@ def build_route_map(date: str, repo_root: Path | None = None) -> dict:
         "multi_source_items": multi_source_items,
         "multi_source_themes": multi_theme_summary,
         "theme_multi_source_items": theme_multi_source_items,
+        "new_themes": new_themes,
         "catalysts": len(catalysts),
     }
 
