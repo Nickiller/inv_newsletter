@@ -32,22 +32,31 @@ source .venv/bin/activate
 inv-newsletter                  # 抓取并保存
 inv-newsletter --dry-run        # 预览匹配邮件
 inv-newsletter --hours 72       # 自定义时间范围
-inv-newsletter --summarize      # 抓取 + API 总结
-inv-newsletter --monitor -v     # 自动监控模式（launchd 调用）
-
-# 发布到飞书（完整流水线：fetch → summarize → publish to Lark）
-inv-newsletter --summarize --publish                    # 抓取 + 总结 + 发布飞书
-inv-newsletter --summarize --publish --date 2026-04-17  # 指定日期
-inv-newsletter --publish-file output/daily/2026-04-17_daily_digest.md  # 单独发布已有文件
+inv-newsletter --monitor -v     # 自动监控模式（launchd 调用；只通知，不自动生成）
 ```
 
+### daily digest 生成路径
+- **主路径（v3，当前生产用）**：在 Claude Code session 内由 v3 编排（`digest_v3/`：chunk → route →
+  merge → 各板块 subagent → assemble）驱动，**不调 API**。见 `digest_v3/RUNBOOK.md`。
+- **legacy 手动兜底（`--summarize`）**：单 prompt API 路径（`summarizer.summarize_daily` +
+  `prompts/digest_system_v3.md`）。产出质量明显低于 v3，仅在无法开 CC session（headless/cron）时作兜底：
+  ```bash
+  inv-newsletter --summarize --publish                    # 抓取 + legacy 总结 + 发布飞书
+  inv-newsletter --summarize --publish --date 2026-04-17  # 指定日期
+  ```
+  ⚠️ v3 publish 失败时**不要**退回 legacy 重新生成（会得到更差的 digest）——改用 `--publish-file` 重发已有文件。
+
 ### 发布流程说明
-`--publish` 会在总结完成后自动调用 `lark_publisher.py`，将 Markdown 转为飞书文档并生成公开分享链接（可直接转发微信）。`--publish-file` 用于单独发布已有的摘要文件，跳过抓取和总结步骤。
+`--publish` 会在总结完成后自动调用 `lark_publisher.py`，将 Markdown 转为飞书文档并生成公开分享链接（可直接转发微信）。`--publish-file` 用于单独发布已有的摘要文件，跳过抓取和总结步骤（v3 主路径就用它发布）。
+```bash
+inv-newsletter --publish-file output/daily/2026-04-17_daily_digest.md
+```
 
 ## 自动监控
 - launchd 每 30 分钟调用 `--monitor`，20:00-23:00 CST 窗口
-- 检测 6 个邮件源到达情况，≥2 源 + 45 分钟无新邮件 → 自动总结
-- 23:00 截止强制总结已收邮件
+- 检测 6 个邮件源到达情况，≥2 源 + 45 分钟无新邮件 → **通知就绪**（macOS 通知），**不再自动生成 digest**
+- 23:00 截止时同样只通知；收到通知后在 CC session 里跑 v3 主路径
+- 状态里用 `notified` 标记去重（一天只提醒一次）
 - 配置：`filters.yaml` 的 `monitor:` 段
 - 日志：`logs/monitor.log`
 - 状态：`data/mail/.monitor_state.json`

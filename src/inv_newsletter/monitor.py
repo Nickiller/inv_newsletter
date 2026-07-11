@@ -30,9 +30,10 @@ def run_monitor(config: AppConfig, base_dir: Path) -> None:
     state = _load_state(base_dir)
     day_state = state.get(today, {})
 
-    # Already summarized today?
-    if day_state.get("summarized"):
-        logger.info(f"Already summarized today, skipping")
+    # Already notified today? (the v3 digest is generated in a Claude Code
+    # session, not here — monitor only signals readiness.)
+    if day_state.get("notified") or day_state.get("summarized"):
+        logger.info(f"Already notified today, skipping")
         return
 
     # Fetch new emails
@@ -73,29 +74,18 @@ def run_monitor(config: AppConfig, base_dir: Path) -> None:
     )
 
     if should:
-        try:
-            from inv_newsletter.summarizer import summarize_daily
-
-            sum_cfg = config.summarization
-            output_path = summarize_daily(
-                data_dir=base_dir,
-                output_dir=sum_cfg.output_dir,
-                target_date=today,
-                model=sum_cfg.model,
-                max_tokens=sum_cfg.max_tokens,
-            )
-            day_state["summarized"] = True
-            day_state["summarized_at"] = datetime.now(tz).isoformat()
-            day_state["summary_path"] = str(output_path)
-            logger.info(f"Digest saved -> {output_path}")
-
-            # Auto-sync the digest (+ images) into the wiki vault, if configured
-            from inv_newsletter.wiki_sync import sync_digest_to_wiki
-            sync_digest_to_wiki(output_path, sum_cfg.wiki_sync_dir)
-
-            _notify_user(f"Daily digest ready: {received_count} sources summarized")
-        except Exception as e:
-            logger.error(f"Summarization failed: {e}")
+        # Signal readiness only — the daily digest is produced by the v3
+        # orchestration inside a Claude Code session, not by the legacy
+        # single-prompt API path. Auto-generating here would emit a
+        # lower-quality legacy digest (see blindspot scan U3).
+        day_state["notified"] = True
+        day_state["notified_at"] = datetime.now(tz).isoformat()
+        logger.info(
+            f"Ready for v3 digest: {received_count} sources arrived ({reason})"
+        )
+        _notify_user(
+            f"投研邮件已就绪：{received_count} 个源到达，可运行 v3 日报"
+        )
 
     _save_state(state, base_dir)
 
