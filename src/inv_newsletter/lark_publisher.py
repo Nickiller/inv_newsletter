@@ -41,6 +41,8 @@ def _publish_digest_impl(md_path: Path, title: str | None, folder_token: str | N
     md_text = md_path.read_text(encoding="utf-8")
     if title is None:
         title = md_path.stem  # e.g. 2026-04-10_daily_digest
+        if title.endswith("_v3"):
+            title = title[: -len("_v3")]  # drop internal pipeline-version suffix
 
     # Pre-process: wrap TL;DR in callout block
     md_text = _wrap_tldr_in_callout(md_text)
