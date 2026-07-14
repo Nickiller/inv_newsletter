@@ -98,9 +98,14 @@ def main():
 
 
 def _run_main(args, config, base_dir: Path):
-    # Publish-file shortcut: just publish an existing .md, skip everything else
+    # Publish-file shortcut: just publish an existing .md, skip everything else.
+    # This is the v3 main path — mirror the digest into the local wiki vault too
+    # (the legacy --summarize path syncs itself; weekly syncs to its own dir).
     if args.publish_file:
-        _do_publish(Path(args.publish_file), config.summarization.lark_folder_token)
+        pub_path = Path(args.publish_file)
+        _do_publish(pub_path, config.summarization.lark_folder_token)
+        from inv_newsletter.wiki_sync import sync_digest_to_wiki
+        sync_digest_to_wiki(pub_path, config.summarization.wiki_sync_dir)
         return
 
     # Fetch emails (unless --summarize-only)

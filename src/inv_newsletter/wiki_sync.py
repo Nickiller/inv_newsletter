@@ -36,7 +36,12 @@ def sync_digest_to_wiki(digest_path: Path, wiki_dir: Path | str | None) -> Path 
         return None
 
     try:
-        dest_md = wiki_dir / digest_path.name
+        # Drop the internal pipeline-version suffix so the vault keeps a stable
+        # `{date}_daily_digest.md` name across legacy and v3 outputs.
+        dest_name = digest_path.name
+        if dest_name.endswith("_v3.md"):
+            dest_name = dest_name[: -len("_v3.md")] + ".md"
+        dest_md = wiki_dir / dest_name
         shutil.copy2(digest_path, dest_md)
 
         # Copy the sibling image dir: output/daily/{date}/ -> wiki/{date}/
