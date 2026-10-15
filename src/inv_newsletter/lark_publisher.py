@@ -1,7 +1,8 @@
 """Publish a daily digest markdown to Feishu/Lark using lark-cli.
 
 Workflow:
-1. Pre-process markdown: wrap `## 今日要点` body in <callout>
+1. Pre-process markdown: wrap `## 今日要点` body in <callout>; rename `[X](` link text
+   to `[X.com](` (Lark would otherwise render it as a checked todo)
 2. Parse markdown into text/image segments
 3. Create Lark doc with title (and first text segment)
 4. For each subsequent segment: append text via `docs +update`, or insert image via `docs +media-insert`
@@ -25,6 +26,9 @@ TLDR_PATTERN = re.compile(
     r"(^## 今日要点[^\n]*\n\n?)(.*?)(?=^## |\Z)",
     re.MULTILINE | re.DOTALL,
 )
+# Link text `[X](url)` (X/Twitter source label) is misread by Lark's markdown
+# importer as a GFM checked-task box → whole bullet becomes a struck-through todo.
+X_LINK_PATTERN = re.compile(r"(?<!!)\[[xX]\]\(")
 
 
 def publish_digest(md_path: Path, title: str | None = None, folder_token: str | None = None) -> dict:
@@ -46,6 +50,7 @@ def _publish_digest_impl(md_path: Path, title: str | None, folder_token: str | N
 
     # Pre-process: wrap TL;DR in callout block
     md_text = _wrap_tldr_in_callout(md_text)
+    md_text = X_LINK_PATTERN.sub("[X.com](", md_text)
 
     segments = _split_segments(md_text, md_path.parent)
     if not segments:
