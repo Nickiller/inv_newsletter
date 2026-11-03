@@ -109,6 +109,7 @@ class OutlookBrowser:
                     "outlook.office365.com/api/" in url
                     or "outlook.office365.com/owa/" in url
                     or "outlook.office.com/api/" in url
+                    or "outlook.cloud.microsoft/owa/" in url  # OWA redirects here since late 2026
                     or "substrate.office.com" in url
                 ):
                     captured.append({
