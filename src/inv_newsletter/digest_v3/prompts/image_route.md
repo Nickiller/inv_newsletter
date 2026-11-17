@@ -28,6 +28,7 @@ primary 填 `DROP`（不进任何板块）的情况：
 - 医药/创新药/生物科技/制药/医疗器械主题的图表，一律 DROP。
 - 体育/娱乐八卦类图片。
 - 看不清、像素过低、无法判断内容的图。
+- **亚洲科技个股涨跌热力大表**（Jefferies While You Were Sleeping 里那张按 INDICES / INTERNET / SOFTWARE & SERVICES / HARDWARE / SEMIS / COMPONENTS 分组、红绿底色的亚洲个股单日涨跌全表），一律 DROP。
 </drop_rules>
 
 <caption_format>
