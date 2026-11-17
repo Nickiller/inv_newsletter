@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 import os
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import anthropic
@@ -57,6 +57,19 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
     fm = yaml.safe_load(parts[1]) or {}
     body = parts[2].strip()
     return fm, body
+
+
+def _received_utc_date(fm: dict) -> date | None:
+    raw = fm.get("received_at")
+    if not raw:
+        return None
+    try:
+        dt = raw if isinstance(raw, datetime) else datetime.fromisoformat(str(raw))
+    except ValueError:
+        return None
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc)
+    return dt.date()
 
 
 def _meritco_id_to_url(meritco_id: str) -> str | None:
@@ -98,9 +111,16 @@ def _load_meritco_week(meritco_dir: Path, week_dates: list[date]) -> list[dict]:
 
 
 def _load_weekly_emails(mail_dir: Path, week_dates: list[date], weekly_senders: set[str]) -> list[dict]:
-    """Load this week's emails whose sender_address is in weekly_senders."""
+    """Load this week's emails whose sender_address is in weekly_senders.
+
+    Folders are keyed by *digest* date (storage.digest_date), so a US-Sunday
+    afternoon email lands in the next Monday's folder. Select by the email's
+    UTC received date instead, scanning one extra folder past week end.
+    """
+    week_set = set(week_dates)
+    scan_dates = list(week_dates) + [week_dates[-1] + timedelta(days=1)]
     out: list[dict] = []
-    for d in week_dates:
+    for d in scan_dates:
         date_dir = mail_dir / d.isoformat()
         if not date_dir.exists():
             continue
@@ -110,8 +130,11 @@ def _load_weekly_emails(mail_dir: Path, week_dates: list[date], weekly_senders: 
                 fm, body = _parse_frontmatter(raw)
                 if fm.get("sender_address", "").lower() not in weekly_senders:
                     continue
+                recv = _received_utc_date(fm) or d
+                if recv not in week_set:
+                    continue
                 out.append({
-                    "date": d.isoformat(),
+                    "date": recv.isoformat(),
                     "frontmatter": fm,
                     "body": body,
                     "filename": str(email_md),

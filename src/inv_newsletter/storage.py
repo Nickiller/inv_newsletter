@@ -4,8 +4,9 @@ import json
 import logging
 import re
 import unicodedata
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from inv_newsletter.converter import ConversionResult
 from inv_newsletter.preprocess import preprocess_email
@@ -15,10 +16,27 @@ logger = logging.getLogger(__name__)
 
 FETCHED_IDS_FILE = ".fetched_ids.json"
 
+# Daily digest D is generated CST 20:00–23:00 on day D (monitor.deadline_hour),
+# so it should cover mail from CST 23:00 on D-1 up to CST 23:00 on D.
+DIGEST_TZ = ZoneInfo("Asia/Shanghai")
+DIGEST_CUTOFF_HOUR = 23
+
+
+def digest_date(received_at: datetime) -> date:
+    """Which daily digest an email belongs to (= its data/mail/<date>/ folder).
+
+    e.g. TMTB Morning Wrap at CST 21:32 → same day; EOD Wrap at CST 07:18 →
+    that (next) day; anything at/after CST 23:00 → the following day.
+    """
+    local = received_at.astimezone(DIGEST_TZ)
+    if local.hour >= DIGEST_CUTOFF_HOUR:
+        local += timedelta(days=1)
+    return local.date()
+
 
 def save_email(email: Email, result: ConversionResult, base_dir: Path) -> Path:
-    """Save email as .md with images to date-based subdirectory. Returns the directory path."""
-    date_str = email.received_at.strftime("%Y-%m-%d")
+    """Save email as .md with images to its digest-date subdirectory. Returns the directory path."""
+    date_str = digest_date(email.received_at).isoformat()
     slug = _make_slug(email.subject, email.sender_address, email.received_at)
     email_dir = base_dir / date_str / slug
     email_dir.mkdir(parents=True, exist_ok=True)

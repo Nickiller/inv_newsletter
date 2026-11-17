@@ -72,6 +72,15 @@ filters:
     keywords:
       - "Tech HW & Semis"
 
+  - name: "TMTB"
+    # TMT Breakout Substack 付费订阅（2026-11-16 起），推送邮件即全文
+    # 收 Morning Wrap / EOD Wrap / Podcast Intel / First Takes / Bogeys / Weekly
+    senders:
+      - "tmtbreakout@substack.com"
+    exclude_keywords:
+      - "Welcome to"
+      - "Programming Note"
+
 # Weekly 必读邮件筛选（仅在 --weekly 模式下使用，不参与 daily monitor）
 weekly_filters:
   - name: "Bernstein Weekly Tech Check"
