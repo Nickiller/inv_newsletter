@@ -18,6 +18,7 @@
 <routing_rules>
 - 按**图表主题/涉及公司/指标**决定 primary 板块（图在讲什么，就归哪个板块）。
 - 一张图只给一个 primary 板块。tickers 填图中明确出现的股票代码（无则空数组）。
+- **TMTB 盘前看板**（TMTB Morning Wrap 里那张组合表：TMT Pre-mkt Movers/Shakers + Futures + Mega-Cap + AI/TMT Subsectors + Asia Overnight）一律 `primary: 宏观与市场`，caption 以「TMTB 盘前看板」开头。
 </routing_rules>
 
 <drop_rules>
