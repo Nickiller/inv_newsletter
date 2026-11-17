@@ -11,6 +11,7 @@ import requests
 from bs4 import BeautifulSoup, Tag
 from markdownify import markdownify as md
 
+from inv_newsletter.links import clean_tracking_url
 from inv_newsletter.outlook import Attachment
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,15 @@ def convert_email(
     #    Instead of unwrapping whole tables (which can lose content),
     #    we remove purely empty rows to reduce noise.
     _clean_empty_table_rows(soup)
+
+    # 2b. Unwrap subscriber click-tracking links (Substack / Resend) so the
+    #     digest never carries a per-recipient URL; untrackable ones → text only.
+    for a in soup.find_all("a", href=re.compile(r"substack\.com/|resend-clicks-a\.com/|slack\.com/", re.I)):
+        clean = clean_tracking_url(a["href"])
+        if clean is None:
+            a.unwrap()
+        else:
+            a["href"] = clean
 
     # 3. Map cid: inline images to local files
     cid_map = {att.content_id: att for att in attachments if att.is_inline and att.content_id}
