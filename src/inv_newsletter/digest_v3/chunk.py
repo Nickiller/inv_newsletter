@@ -208,10 +208,12 @@ def build_chunks(date: str, repo_root: Path | None = None) -> dict:
         if email_dir.is_dir():
             email_md = email_dir / "email.md"
             image_names: list[str] = []
+            sender = ""
             if email_md.exists():
                 fm, _ = _parse_frontmatter(email_md.read_text(encoding="utf-8"))
                 image_names = fm.get("images", []) or []
-            selected = _select_key_images(email_dir, image_names)
+                sender = fm.get("sender_address", "") or ""
+            selected = _select_key_images(email_dir, image_names, sender)
             for img in selected:
                 global_img_n += 1
                 all_chunks.append({

@@ -29,6 +29,13 @@ MAX_IMAGE_SIZE = 1_500_000  # 1.5MB — skip oversize screenshots that break pro
 MAX_IMAGES_PER_EMAIL = 5  # 每封邮件最多 5 张图（图表多的邮件如 JPM Sentiment Monitor 需要更多额度）
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 
+# Per-sender (min_size, max_count) overrides. TMTB's Substack UI icons are
+# already stripped in converter, so its small images are real tables/charts
+# (e.g. a 10KB P/E table), and an EOD Wrap can carry 15+ of them.
+SENDER_IMAGE_POLICY: dict[str, tuple[int, int]] = {
+    "tmtbreakout@substack.com": (5 * 1024, 15),
+}
+
 CAPTION_MODEL = "claude-haiku-4-5-20251001"
 CAPTION_CACHE_FILE = Path("data/.image_caption_cache.json")
 CAPTION_PROMPT = (_PROMPTS_DIR / "image_caption.md").read_text(encoding="utf-8").strip()
@@ -218,8 +225,13 @@ def _caption_all_images(client: anthropic.Anthropic, emails: list[dict]) -> dict
     return cache
 
 
-def _select_key_images(email_dir: Path, image_names: list[str]) -> list[dict]:
+def _select_key_images(
+    email_dir: Path, image_names: list[str], sender_address: str = ""
+) -> list[dict]:
     """Filter images to keep only charts/data (skip logos/banners)."""
+    min_size, max_count = SENDER_IMAGE_POLICY.get(
+        (sender_address or "").lower(), (MIN_IMAGE_SIZE, MAX_IMAGES_PER_EMAIL)
+    )
     selected = []
     for name in image_names:
         path = email_dir / name
@@ -229,7 +241,7 @@ def _select_key_images(email_dir: Path, image_names: list[str]) -> list[dict]:
         if ext not in IMAGE_EXTENSIONS:
             continue
         size = path.stat().st_size
-        if size < MIN_IMAGE_SIZE:
+        if size < min_size:
             continue
         if size > MAX_IMAGE_SIZE:
             logger.info(f"Skipping oversize image {name} ({size/1e6:.1f}MB > {MAX_IMAGE_SIZE/1e6:.1f}MB)")
@@ -240,7 +252,7 @@ def _select_key_images(email_dir: Path, image_names: list[str]) -> list[dict]:
             "size": size,
             "media_type": _media_type(ext),
         })
-        if len(selected) >= MAX_IMAGES_PER_EMAIL:
+        if len(selected) >= max_count:
             break
     return selected
 
