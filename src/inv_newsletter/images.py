@@ -31,9 +31,9 @@ IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 
 # Per-sender (min_size, max_count) overrides. TMTB's Substack UI icons are
 # already stripped in converter, so its small images are real tables/charts
-# (e.g. a 10KB P/E table), and an EOD Wrap can carry 15+ of them.
+# (e.g. a 10KB P/E table); cap at 10 per email (an EOD Wrap can carry 15+).
 SENDER_IMAGE_POLICY: dict[str, tuple[int, int]] = {
-    "tmtbreakout@substack.com": (5 * 1024, 15),
+    "tmtbreakout@substack.com": (5 * 1024, 10),
 }
 
 CAPTION_MODEL = "claude-haiku-4-5-20251001"

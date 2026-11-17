@@ -32,7 +32,6 @@ def test_tmtb_keeps_small_tables_and_more_images():
     d = Path(tempfile.mkdtemp())
     names = _make_images(d, SIZES)
     got = _select_key_images(d, names, "TMTBreakout@substack.com")
-    # 3KB 以下仍过滤；其余 17 张里取前 15 张
-    assert len(got) == 15
+    # 5KB 以下过滤；其余 17 张里取前 10 张
+    assert [g["name"] for g in got] == [f"img-{i:03d}.png" for i in range(1, 11)]
     assert "img-009.png" in [g["name"] for g in got]  # 10KB P/E 表
-    assert "img-018.png" not in [g["name"] for g in got]
