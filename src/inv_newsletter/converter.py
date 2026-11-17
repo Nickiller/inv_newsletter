@@ -5,7 +5,9 @@ import logging
 import mimetypes
 import re
 from dataclasses import dataclass
+from urllib.parse import unquote, urlparse
 
+import requests
 from bs4 import BeautifulSoup, Tag
 from markdownify import markdownify as md
 
@@ -92,6 +94,22 @@ def convert_email(
         else:
             img.decompose()
 
+    # 4b. Substack emails reference images by URL (substackcdn) instead of
+    #     cid:/base64 — download post content images, drop Substack UI icons.
+    for img in soup.find_all("img", src=re.compile(r"^https?://([\w-]+\.)*substackcdn\.com/", re.I)):
+        src = img["src"]
+        if not _is_substack_content_image(src, img.get("width", "")):
+            img.decompose()
+            continue
+        fetched = _fetch_remote_image(src)
+        if fetched is None:
+            continue  # keep the remote URL so the markdown still points somewhere
+        data, content_type = fetched
+        img_counter += 1
+        filename = f"img-{img_counter:03d}{_guess_ext(content_type, '')}"
+        images.append(ImageFile(filename=filename, data=data))
+        img["src"] = f"./{filename}"
+
     # 5. Also save non-inline image attachments
     for att in attachments:
         if not att.is_inline and att.content_bytes and att.content_type.startswith("image/"):
@@ -114,6 +132,44 @@ def convert_email(
     markdown = _post_clean(markdown)
 
     return ConversionResult(markdown=markdown, images=images)
+
+
+SUBSTACK_MIN_WIDTH = 100  # declared width below this = avatar/logo, not content
+REMOTE_IMAGE_TIMEOUT = 20
+REMOTE_IMAGE_MAX_BYTES = 10_000_000
+
+
+def _is_substack_content_image(src: str, width: str) -> bool:
+    """Post images are substackcdn /image/fetch/ proxies of substack-post-media
+    uploads; icons (like/comment/share) and email chrome proxy substack.com."""
+    parsed = urlparse(src)
+    if parsed.hostname != "substackcdn.com" or not parsed.path.startswith("/image/fetch/"):
+        return False
+    if "substack-post-media" not in unquote(parsed.path):
+        return False
+    if width.isdigit() and int(width) < SUBSTACK_MIN_WIDTH:
+        return False
+    return True
+
+
+def _fetch_remote_image(url: str) -> tuple[bytes, str] | None:
+    """Download an image; returns (bytes, content_type) or None on any failure."""
+    try:
+        resp = requests.get(
+            url,
+            timeout=REMOTE_IMAGE_TIMEOUT,
+            # substackcdn f_auto negotiates format from Accept — ask for png/jpeg
+            headers={"Accept": "image/png,image/jpeg;q=0.9,image/*;q=0.5"},
+        )
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        logger.warning(f"Remote image download failed ({e}): {url[:120]}")
+        return None
+    content_type = resp.headers.get("Content-Type", "").split(";")[0].strip()
+    if not content_type.startswith("image/") or len(resp.content) > REMOTE_IMAGE_MAX_BYTES:
+        logger.warning(f"Skipping remote image ({content_type}, {len(resp.content)}B): {url[:120]}")
+        return None
+    return resp.content, content_type
 
 
 def _clean_empty_table_rows(soup: BeautifulSoup):
